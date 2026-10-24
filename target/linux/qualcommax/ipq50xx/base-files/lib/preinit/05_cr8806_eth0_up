@@ -1,0 +1,10 @@
+# Xiaomi CR8806: GMAC0 (eth0) reaches the QCA8337 through its GE PHY and PHY4,
+# a PHY-to-PHY link. PHY4 starts autoneg at probe time (~2s); if the GE PHY
+# is not yet advertising 1000BASE-T, PHY4 gives up gigabit after ~13s and the
+# link never comes up. Opening eth0 early attaches the GE PHY in time.
+cr8806_eth0_up() {
+	[ "$(board_name)" = "xiaomi,cr8806" ] || return 0
+	ip link set eth0 up
+}
+
+boot_hook_add preinit_main cr8806_eth0_up
