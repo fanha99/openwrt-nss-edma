@@ -138,9 +138,32 @@ fraglist GRO chỉ còn tác dụng với vài nghìn gói đầu của mỗi lu
 - Mới đo một lần. Cần chạy lại để biết độ dao động, và thử tắt fraglist GRO trên bản
   không có 0149 để biết mỗi thay đổi đóng góp bao nhiêu.
 
+## 6. Tắt fraglist GRO trên bản không 0149
+
+Cùng cách làm như mục 5 (reboot, ~9 phút uptime, tắt `rx-gro-list` mọi interface), trên
+bản debug không có 0149. Upload 531 (lượt 1, Wi-Fi dao động) rồi 747-753, download
+893-931 Mbit/s.
+
+So sánh cả bốn, cùng bản debug page_owner, cùng profile NSS 256M, mỗi ô một lần đo:
+
+| | không 0149 | không 0149 + tắt GRO | 0149 | **0149 + tắt GRO** |
+|---|---|---|---|---|
+| MemFree + Cached trước → sau (MiB) | 49 → 33 | 53 → 38 | 49 → 31 | **46 → 37** |
+| mất qua 4 lượt (MiB) | 16 | 15 | 18 | **9** |
+| SUnreclaim trước → sau (MiB) | 36 → 46 | 35 → 46 | 22 → 31 | **21 → 24** |
+| page_owner payload pool bộ đệm trống (MiB) | 16 → 25 | 14 → 24 | 14 → 16 | 14 → 18 |
+| MemAvailable sau (MiB) | 9 | 10 | 6 | 13 |
+
+- Mỗi thay đổi đứng riêng không giúp gì: chỗ phân mảnh `kmalloc-4k` chỉ chuyển từ payload
+  NSS (không 0149) sang segment fraglist (không tắt GRO), hoặc ngược lại.
+- Cả hai cùng lúc thì lượng RAM mất qua 4 lượt giảm một nửa (9 so với 15-18 MiB), và slab
+  không tăng.
+- Không 0149 thì payload pool tăng ~9 MiB dù số payload firmware giữ gần như không đổi
+  (~4250): phần chênh là ô trống trong slab order-3 dở dang.
+
 ## Việc còn lại
 
-- Tắt fraglist GRO trên bản không 0149 (slot 1), và lặp lại mục 5 một lần.
+- Lặp lại "0149 + tắt GRO" một lần để biết độ dao động.
 - Nếu giữ: tắt fraglist GRO lâu dài cho CR8806 (script boot/hotplug trong base-files,
   hoặc cho cả cây NSS), rồi chạy dài 1-2 ngày để biết phần "không tên" (~61 MiB) có
   dừng lại không.
