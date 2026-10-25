@@ -4,6 +4,19 @@ Branch thử nghiệm, nằm trên `cr8806-pr`. Mỗi thử nghiệm một mục
 nào, kết quả. Khi ổn định, phần code được gộp lại thành commit trên `cr8806-pr`; thư mục
 `cr8806-memtest/` và các commit `DEBUG:` không đưa vào branch chính.
 
+Thứ tự commit trên branch này:
+
+1. `cr8806-pr`: board CR8806, và profile ath11k 256M mặc định cho CR8806 (mục 2).
+2. `qualcommax: ipq50xx: cr8806: turn fraglist GRO off by default` (mục 5-7). Code thật,
+   sẽ gộp vào `cr8806-pr`.
+3. `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không gộp. Build bản thường thì
+   checkout commit 2.
+4. Các commit `cr8806-memtest:`: ghi chép này và `tools/`.
+
+Phần qca-nss-drv nằm trong nss-packages, branch `cr8806-memtest` của fork
+`fanha99/nss-packages`: profile `NSS_MEM_PROFILE_LOW` mặc định cho CR8806 (đã gửi PR
+kuncy7/nss-packages#7) và patch 0149 (mục 4).
+
 ## Phần cứng và cách đo
 
 - Xiaomi CR8806: IPQ5018 + QCN6122, 256 MiB RAM (kernel thấy 169 MiB, 90 MiB bị giữ lúc
@@ -59,7 +72,7 @@ mỗi lượt upload (pool descriptor RX của NSS, 3 × 512; host không thiế
 
 Đưa vào `cr8806-pr`: CR8806 vào default của `ATH11K_MEM_PROFILE_256M` (trước đó không có,
 build mới sẽ ra profile 1G) và `ATH11K_NSS_MEM_PROFILE_256M`. `NSS_MEM_PROFILE_LOW` nằm
-trong feed nss-packages, vẫn phải chọn tay.
+trong feed nss-packages: trước phải chọn tay, giờ có commit riêng (kuncy7/nss-packages#7).
 
 ## 3. page_owner: phần nào giữ RAM sau tải
 
@@ -107,8 +120,8 @@ download 931-940 Mbit/s, không lỗi NSS trong dmesg):
   Object sống lâu (buffer RX CE của ath11k...) nằm lại trong đó nên slab không trả về
   được. Sau 5 phút nghỉ vẫn giữ 7.6 MiB. Tăng 4.8 → 6.3 → 7.3 → 7.6, chậm dần, giống
   phân mảnh hơn là leak.
-- Kết luận: chưa đưa 0149 vào branch chính. Muốn có lợi thật phải giảm việc trộn object
-  sống ngắn và sống lâu trong `kmalloc-4k`, không chỉ riêng payload NSS.
+- Kết luận lúc đó: chưa đưa 0149 vào branch chính. Muốn có lợi thật phải giảm việc trộn
+  object sống ngắn và sống lâu trong `kmalloc-4k`, không chỉ riêng payload NSS (mục 5-6).
 
 ## 5. Tắt fraglist GRO (`rx-gro-list`) trên bản 0149
 
@@ -136,7 +149,7 @@ fraglist GRO chỉ còn tác dụng với vài nghìn gói đầu của mỗi lu
 - MemAvailable khi đang chạy vẫn xuống 7-11 MiB. Đó là payload firmware NSS giữ trong
   hàng đợi lúc có tải, nghỉ thì lấy lại.
 - Mới đo một lần. Cần chạy lại để biết độ dao động, và thử tắt fraglist GRO trên bản
-  không có 0149 để biết mỗi thay đổi đóng góp bao nhiêu.
+  không có 0149 để biết mỗi thay đổi đóng góp bao nhiêu (mục 6).
 
 ## 6. Tắt fraglist GRO trên bản không 0149
 
@@ -191,7 +204,7 @@ lý), và cũng không cần: GRO chạy ở interface nhận.
 ## Việc còn lại
 
 - Chạy dài 1-2 ngày trên bản ở mục 7 để biết phần "không tên" (~61 MiB) có dừng lại không.
-- Gộp vào `cr8806-pr`: commit fraglist GRO đã nằm ngay trên `cr8806-pr`. Patch 0149 là PR
-  riêng vào nss-packages.
+- Nếu chạy dài ổn: gộp commit fraglist GRO vào `cr8806-pr`, gửi patch 0149 thành PR riêng
+  vào nss-packages.
 - Thử nghiệm tiếp theo (chưa làm): hạ `n2h_high_water_core0`, giảm CE buffer ath11k,
   page pool stmmac khi NSS đã nắm data plane, `coherent_pool`.
