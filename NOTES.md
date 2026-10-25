@@ -110,11 +110,39 @@ download 931-940 Mbit/s, không lỗi NSS trong dmesg):
 - Kết luận: chưa đưa 0149 vào branch chính. Muốn có lợi thật phải giảm việc trộn object
   sống ngắn và sống lâu trong `kmalloc-4k`, không chỉ riêng payload NSS.
 
+## 5. Tắt fraglist GRO (`rx-gro-list`) trên bản 0149
+
+Sửa (lúc chạy, không lưu): `ethtool -K <if> rx-gro-list off` cho eth0, eth1, các cổng
+LAN, br-lan, các VLAN của bridge và 3 interface Wi-Fi. Fraglist GRO được bật mặc định cho
+mọi interface bởi `target/linux/generic/hack-6.18/600-net-enable-fraglist-GRO-by-default.patch`.
+Vì sao: ở mục 4, các slab `kmalloc-4k` dở dang được tạo bởi `skb_segment_list`, tức các
+gói đường chậm bị gộp thành fraglist rồi cắt lại lúc gửi. Khi NSS đã nắm data plane thì
+fraglist GRO chỉ còn tác dụng với vài nghìn gói đầu của mỗi luồng.
+
+Đo lại sau reboot (cùng điểm xuất phát ~9 phút uptime như mục 4), 4 lượt, upload
+682-825, download 888-939 Mbit/s:
+
+| sau 4 lượt | không 0149 | 0149 | 0149 + tắt fraglist GRO |
+|---|---|---|---|
+| SUnreclaim trước → sau (MiB) | 36 → 46 | 22 → 31 | **21 → 24** |
+| MemFree + Cached sau (MiB) | 33 | 31 | **37** |
+| MemAvailable sau (MiB) | 9 | 6 | **13** |
+| page_owner `skb_segment_list` (MiB) | 0.4 | 7.6 | 0 |
+| `kmalloc-4k` slab dở dang | 396 | 267 | **42** |
+
+- Hết phân mảnh slab: SUnreclaim gần như đứng yên qua 4 lượt. Payload pool bộ đệm
+  trống dao động 14-19 MiB và trả bớt khi nghỉ.
+- Throughput không giảm (upload còn nhỉnh hơn), dmesg không có lỗi NSS.
+- MemAvailable khi đang chạy vẫn xuống 7-11 MiB. Đó là payload firmware NSS giữ trong
+  hàng đợi lúc có tải, nghỉ thì lấy lại.
+- Mới đo một lần. Cần chạy lại để biết độ dao động, và thử tắt fraglist GRO trên bản
+  không có 0149 để biết mỗi thay đổi đóng góp bao nhiêu.
+
 ## Việc còn lại
 
-- Chạy dài (1-2 ngày) rồi đo lại để biết phần "không tên" (~61 MiB) có dừng lại không.
-- Tắt `rx-gro-list` (ethtool, không lưu) rồi chạy lại 4 lượt trên bản 0149, xem phần
-  `skb_segment_list` và slab `kmalloc-4k` dở dang có biến mất không. Chạy lặp lại bản
-  0149 một lần nữa để biết độ dao động giữa các lần đo.
+- Tắt fraglist GRO trên bản không 0149 (slot 1), và lặp lại mục 5 một lần.
+- Nếu giữ: tắt fraglist GRO lâu dài cho CR8806 (script boot/hotplug trong base-files,
+  hoặc cho cả cây NSS), rồi chạy dài 1-2 ngày để biết phần "không tên" (~61 MiB) có
+  dừng lại không.
 - Thử nghiệm tiếp theo (chưa làm): hạ `n2h_high_water_core0`, giảm CE buffer ath11k,
   page pool stmmac khi NSS đã nắm data plane, `coherent_pool`.
