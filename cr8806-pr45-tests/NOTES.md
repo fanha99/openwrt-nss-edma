@@ -126,3 +126,43 @@ Reading it:
 
 Answer to the question: 512K works on this board and gives back 4.5 MiB. With 0828 the
 Q6 probe does not need the atomic pool.
+
+## 3. `sysupgrade` from each slot
+
+Question: `platform.sh` for this board (write the running slot, set the boot flags to it)
+had never run. Does a plain `sysupgrade` write the slot it runs from and does U-Boot boot
+that slot next?
+
+Change: none. The `sysupgrade.bin` of the build from step 2 is copied to `/tmp` and run with
+`sysupgrade -v` (config kept, the default), once from each slot. Same image both times, so
+a good result shows the flow and the flags, not that the content changed.
+
+Before each run: `ubi.mtd`, the boot flags, and a checksum over `/etc/config/*`. After
+the reboot: the same, plus pools, radios, NSS profile lines and dmesg.
+
+Flags before, slot 1 running: `flag_last_success=1 flag_boot_rootfs=1 flag_ota_reboot=0
+flag_try_sys1_failed=0 flag_try_sys2_failed=0 boot_wait=on uart_en=1`.
+
+| run | from | after reboot | flags after | config checksum |
+|---|---|---|---|---|
+| 1 | slot 1 (`ubi.mtd=rootfs_1`) | slot 1 | `last_success=1 boot_rootfs=1 ota_reboot=0` | unchanged |
+| 2 | slot 0 (`ubi.mtd=rootfs`) | slot 0 | `last_success=0 boot_rootfs=0 ota_reboot=0` | unchanged |
+
+Between the runs the board was switched to slot 0 by hand (`fw_setenv flag_last_success 0`,
+`flag_boot_rootfs 0`, `reboot`).
+
+After run 2, slot 0: `coherent_pool=512K`, the three pools 524288, no DMA / Q6 / OOM line in
+dmesg, `NSS 256 MiB: active` on both radios, all three SSIDs up (5 GHz HE160 channel 36),
+`rx-gro-list: off` on eth0, eth1, lan1, lan3, eth0 and eth1 up. MemAvailable 22.7 MiB idle.
+
+Result: the flow ran from both slots and the board came back on the slot it ran from. The
+log of each run ends at "Commencing upgrade" (the ssh session is closed by sysupgrade), and
+the image was identical to what was already there, so the write itself is not shown
+independently; what is shown is that sysupgrade ran, the board rebooted and came back
+with the right slot, flags and config. The flags the script sets
+(`flag_last_success`, `flag_boot_rootfs` = the running slot, the failure flags cleared)
+are the ones U-Boot reads, and the board came back on the slot that was written, each time
+without a console. Not covered: an image of a different build (config migration), a
+sysupgrade without keeping settings (`-n`), a failed write, and the stock firmware in the
+other slot (both slots here carry OpenWrt, so "leave the other slot alone" was not
+tested with stock in it).
