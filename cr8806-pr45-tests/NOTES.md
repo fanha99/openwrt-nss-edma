@@ -90,4 +90,39 @@ Expected: three pools of 512 KiB, 4.5 MiB less held. What to check after the fla
 both radios up (the QCN6122 Q6 probe is what failed with `-12` without 0828), no `dma alloc`
 errors in dmesg, `pool_size_*` values, then four rounds.
 
-Result: pending.
+Result: works. Flashed into the other slot with the config kept (build `0b9f0de696`).
+
+Boot checks:
+
+- `/proc/cmdline` has `coherent_pool=512K`; `pool_size_dma`, `_dma32` and `_kernel` are
+  524288 each (1.5 MiB, was 6 MiB).
+- No `dma alloc`, `-12`, `qcom-q6-mpd` or OOM line in dmesg; both radios up (5 GHz HE160
+  on channel 36, and 2.4 GHz); `NSS 256 MiB: active` on both ath11k devices.
+- Pools unchanged after four rounds: nothing drew on them.
+
+Four rounds, same load as the reference (MiB = kB / 1024):
+
+| | before | round 1 | round 2 | round 3 | round 4 |
+|---|---|---|---|---|---|
+| MemAvailable (MiB) | 19.2 | 15.4 | 18.4 | 15.9 | 14.5 |
+| SUnreclaim (MiB) | 23.0 | 23.6 | 23.3 | 24.5 | 23.9 |
+| Mbit/s up / down | | 759 / 925 | 781 / 930 | 796 / 936 | 797 / 928 |
+
+NSS payloads held after the last round: 4771.
+
+Reading it:
+
+- MemAvailable after the rounds is 14.5-18.4 MiB, against 12-13 MiB in the reference
+  build, and 19.2 MiB before the load against 18. That is about what the 4.5 MiB of pools
+  should give back; page cache moves MemAvailable by a few MiB between snapshots (it was
+  not monotonic here), so the single numbers are not precise to better than that.
+- SUnreclaim is the same as in the reference (23-24.5 MiB): the pools are not slab.
+- Throughput is in the range of the reference (788-841 up, 933-940 down) at the low end
+  for upload: round 1 is 759. One run per cell, not enough to call that a change.
+- The base is not the same as the reference build (see the reference section), and the
+  reference was measured days earlier, so the comparison is indicative.
+- `wan` reports `rx-gro-list: off [requested on]`: that interface cannot be switched, and
+  it carries no traffic in this test. Not looked into.
+
+Answer to the question: 512K works on this board and gives back 4.5 MiB. With 0828 the
+Q6 probe does not need the atomic pool.
