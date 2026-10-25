@@ -48,7 +48,7 @@
 		 * in the kernel (multiPD is done in ath11k), so 512K is enough,
 		 * as on the other 256 MiB boards.
 		 */
-		bootargs-append = " root=/dev/ubiblock0_1 swiotlb=1 coherent_pool=512K";
+		bootargs-append = " root=/dev/ubiblock0_1 swiotlb=1 coherent_pool=512K page_owner=on";
 		stdout-path = "serial0:115200n8";
 	};
 
