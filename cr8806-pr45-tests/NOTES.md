@@ -57,7 +57,16 @@ Changes (in this order on the branch):
 4. `cr8806: turn fraglist GRO off by default` and `feeds: pin the feeds`: carried from
    the build in use; not part of the PR.
 
-Result: pending (the Kconfig check and a build come with step 2).
+Check: a fresh config with only the board, `kmod-ath11k` and `ATH11K_NSS_SUPPORT` selected
+(`make defconfig`, after `rm -rf tmp/info && make prepare-tmpinfo`) resolves to
+`ATH11K_MEM_PROFILE_256M=y`, `ATH11K_NSS_MEM_PROFILE_256M=y` and `NSS_MEM_PROFILE_LOW=y`
+(the last one comes from the feed, kuncy7/nss-packages#7, here the fork's pinned feed).
+The `.config` of the build in use resolves to the same values; the only difference is
+the new AX58 v2 symbols. Without `ATH11K_NSS_SUPPORT` the NSS 256M profile is not offered
+at all (its `depends on`); the CI `common.config` sets it.
+
+Result: the ath11k side is complete for a build for this board alone. No board run for
+this step; the rebuild with step 2 covers it.
 
 Open question for the maintainer: `ATH11K_NSS_MEM_PROFILE_256M` is `default n` and no other
 256M board sets it; it is measured only on this board. Keep it per-board, or set it
