@@ -71,3 +71,23 @@ this step; the rebuild with step 2 covers it.
 Open question for the maintainer: `ATH11K_NSS_MEM_PROFILE_256M` is `default n` and no other
 256M board sets it; it is measured only on this board. Keep it per-board, or set it
 for the whole `256m` group?
+
+## 2. `coherent_pool=512K`
+
+Question: the other 256 MB boards run with `coherent_pool=512K`, this board had `2M`.
+Does it still work, and what does it give back?
+
+Change: `ipq5018-cr8806.dts`, `coherent_pool=2M` -> `512K` (`swiotlb=1` kept, as on the
+AX3000T v2). Patch 0828 (MPD loader allocates with `GFP_KERNEL`) is in the base.
+
+Baseline, same board running the 2M build, idle after a few days:
+
+- `/sys/kernel/debug/dma_pools/pool_size_{dma,dma32,kernel}`: 2097152 each, 6 MiB in all.
+- MemAvailable 10.7 MiB, MemTotal 168.75 MiB.
+- No `qcom-q6-mpd` errors in dmesg.
+
+Expected: three pools of 512 KiB, 4.5 MiB less held. What to check after the flash:
+both radios up (the QCN6122 Q6 probe is what failed with `-12` without 0828), no `dma alloc`
+errors in dmesg, `pool_size_*` values, then four rounds.
+
+Result: pending.
