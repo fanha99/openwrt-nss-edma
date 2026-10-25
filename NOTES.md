@@ -161,11 +161,37 @@ So sánh cả bốn, cùng bản debug page_owner, cùng profile NSS 256M, mỗi
 - Không 0149 thì payload pool tăng ~9 MiB dù số payload firmware giữ gần như không đổi
   (~4250): phần chênh là ô trống trong slab order-3 dở dang.
 
+## 7. Bản thường: 0149 + fraglist GRO tắt sẵn trong image
+
+Sửa: commit `qualcommax: ipq50xx: cr8806: turn fraglist GRO off by default` (file
+`base-files/etc/uci-defaults/15_cr8806_ecm_gro_list`). ECM vốn đã có tuỳ chọn
+`ecm.general.disable_gro_list` (mặc định 0), script hotplug `net` và init của ECM áp nó cho
+mọi interface vật lý. Commit chỉ bật tuỳ chọn đó cho CR8806. Build từ `cr8806-pr` + commit
+này, không có commit `DEBUG:` (không page_owner), qca-nss-drv có 0149.
+
+Sau khi flash (giữ config), không gõ `ethtool` tay: eth0, eth1, lan1-3, wan và 3 interface
+Wi-Fi tự `rx-gro-list off`. br-lan và các VLAN của nó vẫn `on` (không phải interface vật
+lý), và cũng không cần: GRO chạy ở interface nhận.
+
+4 lượt, upload 788-841, download 933-940 Mbit/s (tốt nhất trong các lần đo):
+
+| | trước | lượt 1 | lượt 2 | lượt 3 | lượt 4 |
+|---|---|---|---|---|---|
+| MemAvailable (MiB) | 18 | 12 | 13 | 12 | 12 |
+| MemFree / Cached (MiB) | 24 / 29 | | | | 25 / 15 |
+| SUnreclaim (MiB) | 21 | 23 | 23 | 23 | 23 |
+
+- Sau test: `kmalloc-4k` chỉ còn 4 slab dở dang (bản đối chứng 396), payload NSS 4266,
+  dmesg không có lỗi NSS.
+- MemAvailable xuống một nấc sau lượt đầu (payload firmware giữ, page cache bị đẩy bớt)
+  rồi đứng yên 12-13 MiB, không còn tụt dần theo từng lượt. Page cache còn 15 MiB sau 4
+  lượt, các bản debug chỉ còn 5-6 MiB.
+- Không có page_owner nên MemAvailable lúc đầu cao hơn các bản debug ~4.5 MiB (`page_ext`).
+
 ## Việc còn lại
 
-- Lặp lại "0149 + tắt GRO" một lần để biết độ dao động.
-- Nếu giữ: tắt fraglist GRO lâu dài cho CR8806 (script boot/hotplug trong base-files,
-  hoặc cho cả cây NSS), rồi chạy dài 1-2 ngày để biết phần "không tên" (~61 MiB) có
-  dừng lại không.
+- Chạy dài 1-2 ngày trên bản ở mục 7 để biết phần "không tên" (~61 MiB) có dừng lại không.
+- Gộp vào `cr8806-pr`: commit fraglist GRO đã nằm ngay trên `cr8806-pr`. Patch 0149 là PR
+  riêng vào nss-packages.
 - Thử nghiệm tiếp theo (chưa làm): hạ `n2h_high_water_core0`, giảm CE buffer ath11k,
   page pool stmmac khi NSS đã nắm data plane, `coherent_pool`.
