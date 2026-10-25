@@ -423,6 +423,7 @@ define KernelPackage/ath11k/config
        config ATH11K_NSS_MEM_PROFILE_256M
                bool "Smaller NSS allocations for 256 MiB IPQ5018/QCN6122 devices"
                depends on ATH11K_NSS_SUPPORT && ATH11K_MEM_PROFILE_256M
+               default y if TARGET_qualcommax_ipq50xx_DEVICE_xiaomi_cr8806
                default n
                help
                   Skip unused host TX arrays, reduce TX pools and completion
@@ -483,7 +484,7 @@ define KernelPackage/ath11k/config
        choice
             prompt "Memory Profile"
             depends on PACKAGE_kmod-ath11k
-            default ATH11K_MEM_PROFILE_256M if TARGET_qualcommax_ipq50xx_DEVICE_cudy_p5 || TARGET_qualcommax_ipq50xx_DEVICE_tplink_ex511-v2 || TARGET_qualcommax_ipq50xx_DEVICE_xiaomi_mi-router-ax3000t-v2
+            default ATH11K_MEM_PROFILE_256M if TARGET_qualcommax_ipq50xx_DEVICE_cudy_p5 || TARGET_qualcommax_ipq50xx_DEVICE_tplink_ex511-v2 || TARGET_qualcommax_ipq50xx_DEVICE_xiaomi_mi-router-ax3000t-v2 || TARGET_qualcommax_ipq50xx_DEVICE_xiaomi_cr8806
             default ATH11K_MEM_PROFILE_1G
             help
             	This option allows you to select the memory profile.
