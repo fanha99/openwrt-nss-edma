@@ -166,3 +166,32 @@ without a console. Not covered: an image of a different build (config migration)
 sysupgrade without keeping settings (`-n`), a failed write, and the stock firmware in the
 other slot (both slots here carry OpenWrt, so "leave the other slot alone" was not
 tested with stock in it).
+
+## 4. `05_cr8806_eth0_up`: the board, or the link?
+
+Question: does the Redmi AX5400, which has the same GE PHY to PHY4 link, need the preinit
+hook too?
+
+Not tested: there is no AX5400 here. What the tree shows:
+
+- Same topology in both DTS files: GMAC0 reaches the QCA8337 through the IPQ5018 GE PHY
+  and switch PHY4 (switch port 5, `phy-mode = "gmii"`, `ethernet = <&gmac0>`), both with
+  `qcom,dac-preset-short-cable` on `&ge_phy`.
+- Different use of eth0 in `02_network`: on the AX5400 `wan` has conduit `eth0`, so
+  netifd opens eth0 as part of bringing `wan` up. On the CR8806 `wan` is on `eth1`
+  (so that it is NSS-offloaded) and nothing opens eth0, which is what the hook does.
+- The CR8806 failure it works around: PHY4 starts autoneg at probe (~2 s), and gives up
+  gigabit after ~13 s if the GE PHY is not yet advertising 1000BASE-T, because nothing opened
+  eth0 and attached that PHY by then.
+
+So the likely cause is the link, and it shows only where nothing opens eth0 early. The AX5400
+as shipped opens it through `wan`. A board that moves its WAN off eth0, or a user who does
+(the README describes an AX5400 on the single-link layout with WAN on eth1), could hit the
+same thing. This is reasoning from the DTS and `02_network`, not a measurement.
+
+How to check on an AX5400 (not done): put `wan` on `eth1`, reboot without the hook, look at
+the PHY4 link in `ethtool eth0` and the QCA8337 port-4 status after 20 s; then add
+`ip link set eth0 up` at preinit and compare.
+
+Result: unanswered by test. Left as a hook for this board only, as the maintainer allowed;
+asked whoever has an AX5400 to run the check above.
