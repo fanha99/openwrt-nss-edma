@@ -423,6 +423,7 @@ define KernelPackage/ath11k/config
        config ATH11K_NSS_MEM_PROFILE_256M
                bool "Smaller NSS allocations for 256 MiB IPQ5018/QCN6122 devices"
                depends on ATH11K_NSS_SUPPORT && ATH11K_MEM_PROFILE_256M
+               default y if TARGET_qualcommax_ipq50xx_DEVICE_xiaomi_cr8806
                default n
                help
                   Skip unused host TX arrays, reduce TX pools and completion
