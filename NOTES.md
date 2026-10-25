@@ -85,10 +85,36 @@ chi phí mỗi payload không đổi, trang trả lại ngay khi skb được gi
 vừa một trang (MRU jumbo) vẫn dùng kmalloc. Vì sao: bỏ phần ~4 MiB kẹt trong slab dở dang
 ở mục 3, và bỏ việc phải cấp khối order-3 trong ngữ cảnh atomic.
 
-Kết quả: _đang đo._
+Kết quả (4 lượt, cùng bản debug page_owner, cùng profile NSS 256M; upload 718-773,
+download 931-940 Mbit/s, không lỗi NSS trong dmesg):
+
+| | không 0149 (trước → sau 4 lượt) | có 0149 (trước → sau 4 lượt) |
+|---|---|---|
+| page_owner: payload pool bộ đệm trống (MiB) | 16.1 → 25.4 | 14.3 → 15.6 |
+| page_owner: `pskb_expand_head <- skb_segment_list` (MiB) | 0 → 0.4 | 0.1 → 7.6 |
+| SUnreclaim (MiB) | 36 → 46 | 22 → 31 |
+| MemFree + Cached (MiB) | 49 → 33 | 49 → 31 |
+| MemAvailable (MiB) | 16 → 9 | 14 → 6-7 |
+
+- Payload pool bộ đệm trống không còn phình: patch làm đúng việc của nó.
+- **Nhưng RAM dùng được không khá hơn.** SUnreclaim thấp hơn ~14 MiB chỉ là đổi chỗ
+  ghi sổ: payload giờ là trang rời, không còn tính vào slab. MemFree + Cached gần như
+  bằng nhau ở cả hai bản.
+- Phần phân mảnh `kmalloc-4k` chuyển sang chỗ khác: sau test vẫn còn ~267 slab order-3
+  dở dang, chứa ~930 object. page_owner gán các slab này cho ai tạo ra chúng trước, ở đây
+  là các segment GSO fraglist của đường chậm (`rx-gro-list` bật trên eth0, eth1,
+  br-lan; ~106 nghìn gói `ipv4_tcp_no_icme` đi qua Linux trước khi ECM tăng tốc luồng).
+  Object sống lâu (buffer RX CE của ath11k...) nằm lại trong đó nên slab không trả về
+  được. Sau 5 phút nghỉ vẫn giữ 7.6 MiB. Tăng 4.8 → 6.3 → 7.3 → 7.6, chậm dần, giống
+  phân mảnh hơn là leak.
+- Kết luận: chưa đưa 0149 vào branch chính. Muốn có lợi thật phải giảm việc trộn object
+  sống ngắn và sống lâu trong `kmalloc-4k`, không chỉ riêng payload NSS.
 
 ## Việc còn lại
 
 - Chạy dài (1-2 ngày) rồi đo lại để biết phần "không tên" (~61 MiB) có dừng lại không.
+- Tắt `rx-gro-list` (ethtool, không lưu) rồi chạy lại 4 lượt trên bản 0149, xem phần
+  `skb_segment_list` và slab `kmalloc-4k` dở dang có biến mất không. Chạy lặp lại bản
+  0149 một lần nữa để biết độ dao động giữa các lần đo.
 - Thử nghiệm tiếp theo (chưa làm): hạ `n2h_high_water_core0`, giảm CE buffer ath11k,
   page pool stmmac khi NSS đã nắm data plane, `coherent_pool`.
