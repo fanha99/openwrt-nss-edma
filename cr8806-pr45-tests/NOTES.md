@@ -195,3 +195,17 @@ the PHY4 link in `ethtool eth0` and the QCA8337 port-4 status after 20 s; then a
 
 Result: unanswered by test. Left as a hook for this board only, as the maintainer allowed;
 asked whoever has an AX5400 to run the check above.
+
+## 5. Review outcome (PR 45)
+
+The maintainer accepted steps 1-4 and asked for these changes, now in the PR branch:
+
+- `coherent_pool=512K` added to the PR as its own commit, with the result of step 2 in the
+  commit message. The test commit on this branch is the same DTS change.
+- The comment of `05_cr8806_eth0_up` now says the hook is about the link, is needed only where
+  nothing else opens eth0 early, and should not be copied to a board without checking PHY4 first.
+- The ath11k NSS 256M profile commit (`ATH11K_NSS_MEM_PROFILE_256M` default) was dropped from
+  the PR: the releases build one `kmod-ath11k` for the whole 256m group, so a per-board default
+  would switch the option on for every 256 MB board in the release image, none of which has run
+  it. It stays in my own builds (set `CONFIG_ATH11K_NSS_MEM_PROFILE_256M=y`). If other 256 MB
+  boards are tested with it, it can go in for the group on its own.
