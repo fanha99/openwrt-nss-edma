@@ -249,11 +249,14 @@ Buffer RX của host "stay allocated but unused". `ethtool -G` gọi
 vẫn giữ: DMA của host khởi động lại trên cùng controller firmware đang dùng. Claim không
 chặn việc đổi ring.
 
+- Bổ sung sau khi đọc `qca-dwmac-nss`: kuncy7 đã gặp đúng kiểu lỗi này khi đổi MTU. Comment
+  ở `NETDEV_PRECHANGEMTU` trong `dwmac_nss_netdev_event()` nói `__stmmac_release()` trên GMAC
+  đang claim gọi `napi_disable()` lần thứ hai, "blocks forever with rtnl held". Với MTU
+  module trả GMAC lại trước; `ethtool -G`/`-L` không phát sự kiện netdev nào nên không được
+  bảo vệ. Treo khi giữ rtnl khớp với việc router không reboot nhưng mạng không lên lại.
 - Không thử được lúc chạy. Muốn lấy lại ~4 MiB phải sửa ở phía claim: giải phóng buffer
   RX của host khi claim (cấp lại khi release, vốn đã phải bounce interface), hoặc ring nhỏ
-  từ lúc probe.
-- Riêng việc `ethtool -G` (và có lẽ các thao tác khác gọi release/open, như đổi MTU) làm
-  chết data plane khi đang claim là một lỗi nên báo cho patch 0956: nên trả `-EBUSY`.
+  từ lúc probe. Với `ethtool -G`/`-L` khi đang claim, nên trả `-EBUSY` (báo kuncy7).
 
 ## 10. ath11k: cache riêng cho mỗi pipe CE, link descriptor cho 32 client, BPF JIT
 
