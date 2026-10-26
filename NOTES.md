@@ -4,20 +4,20 @@ Branch thử nghiệm. Mỗi thử nghiệm một mục: sửa gì, vì sao, đo
 định, phần code được gộp lại thành commit trên branch chính; thư mục `cr8806-memtest/` và
 các commit `DEBUG:` không đưa vào.
 
-Từ mục 10, branch được dựng lại trên `cr8806-pr45-followup` (cây của bản đang chạy: board,
-profile 256M, fraglist GRO tắt, feed pin có 0149, `coherent_pool=512K`, và ghi chép
-`cr8806-pr45-tests/`). Bản cũ, nằm trên `cr8806-pr` trước PR 45, còn ở
-`cr8806-memtest-v1`. Thứ tự commit:
+Sau khi PR 45 được áp vào upstream (`c3po-tag-8021q` 35b1410909: board, profile ath11k
+256M, `coherent_pool=512K`), branch được dựng lại. Thứ tự commit:
 
-1. `cr8806-pr45-followup`.
+1. `cr8806-main`: upstream + NSS 256M mặc định cho CR8806 (riêng, upstream không nhận cho
+   cả nhóm 256m) + fraglist GRO tắt (mục 5-7) + `999-997` và `999-998` (mục 10) + feed pin.
 2. `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không gộp.
-3. Các commit `cr8806-memtest:`: ghi chép này và `tools/` (mục 1-9).
-4. Thử nghiệm mục 10: hai patch ath11k (`999-997`, `999-998`) và script BPF JIT.
-5. Ghi chép mục 10.
+3. Các commit `cr8806-memtest:`: ghi chép này và `tools/`.
 
-Phần qca-nss-drv nằm trong nss-packages, branch `cr8806-memtest` của fork
-`fanha99/nss-packages`: profile `NSS_MEM_PROFILE_LOW` mặc định cho CR8806 (đã gửi PR
-kuncy7/nss-packages#7) và patch 0149 (mục 4).
+Bản trước nằm ở `archive/cr8806-memtest-v1` (trên `cr8806-pr` trước PR 45) và
+`archive/cr8806-memtest-v2` (trên `cr8806-pr45-followup`, có commit BPF JIT ở mục 10).
+
+Phần qca-nss-drv nằm trong nss-packages, branch `cr8806-main` (= `cr8806-memtest`):
+upstream `ipq50xx-rebase` (đã có profile `NSS_MEM_PROFILE_LOW` cho CR8806, từ PR 7) + patch
+0149 (mục 4).
 
 ## Phần cứng và cách đo
 
