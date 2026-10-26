@@ -1,0 +1,51 @@
+From: fanha99 <fanha99@hotmail.com>
+Subject: [PATCH] wifi: ath11k: size the link descriptors for 32 clients in the NSS 256 MiB profile
+
+The WBM idle link descriptor pool is sized for 64 clients with two TIDs
+each: 18560 descriptors, rounded up to 32768 of 128 bytes, 4 MiB of
+coherent DMA memory per radio. In the NSS 256 MiB profile size it for
+32 clients instead: 9279, rounded up to 16384, 2 MiB per radio.
+
+Signed-off-by: fanha99 <fanha99@hotmail.com>
+---
+--- a/drivers/net/wireless/ath/ath11k/dp.c
++++ b/drivers/net/wireless/ath/ath11k/dp.c
+@@ -695,19 +695,24 @@ static int ath11k_wbm_idle_ring_setup(st
+ 	struct ath11k_dp *dp = &ab->dp;
+ 	u32 n_mpdu_link_desc, n_mpdu_queue_desc;
+ 	u32 n_tx_msdu_link_desc, n_rx_msdu_link_desc;
++	u32 n_tids = DP_NUM_TIDS_MAX;
+ 	int ret = 0;
+ 
+-	n_mpdu_link_desc = (DP_NUM_TIDS_MAX * DP_AVG_MPDUS_PER_TID_MAX) /
++	/* 64 clients round up to 32768 descriptors, 4 MiB per radio */
++	if (ath11k_nss_256m_enabled(ab))
++		n_tids = ATH11K_NSS_256M_NUM_TIDS;
++
++	n_mpdu_link_desc = (n_tids * DP_AVG_MPDUS_PER_TID_MAX) /
+ 			   HAL_NUM_MPDUS_PER_LINK_DESC;
+ 
+ 	n_mpdu_queue_desc = n_mpdu_link_desc /
+ 			    HAL_NUM_MPDU_LINKS_PER_QUEUE_DESC;
+ 
+-	n_tx_msdu_link_desc = (DP_NUM_TIDS_MAX * DP_AVG_FLOWS_PER_TID *
++	n_tx_msdu_link_desc = (n_tids * DP_AVG_FLOWS_PER_TID *
+ 			       DP_AVG_MSDUS_PER_FLOW) /
+ 			      HAL_NUM_TX_MSDUS_PER_LINK_DESC;
+ 
+-	n_rx_msdu_link_desc = (DP_NUM_TIDS_MAX * DP_AVG_MPDUS_PER_TID_MAX *
++	n_rx_msdu_link_desc = (n_tids * DP_AVG_MPDUS_PER_TID_MAX *
+ 			       DP_AVG_MSDUS_PER_MPDU) /
+ 			      HAL_NUM_RX_MSDUS_PER_LINK_DESC;
+ 
+--- a/drivers/net/wireless/ath/ath11k/dp.h
++++ b/drivers/net/wireless/ath/ath11k/dp.h
+@@ -211,6 +211,8 @@ struct ath11k_pdev_dp {
+ #define DP_NUM_CLIENTS_MAX 64
+ #define DP_AVG_TIDS_PER_CLIENT 2
+ #define DP_NUM_TIDS_MAX (DP_NUM_CLIENTS_MAX * DP_AVG_TIDS_PER_CLIENT)
++/* NSS 256 MiB profile: link descriptors sized for 32 clients */
++#define ATH11K_NSS_256M_NUM_TIDS (32 * DP_AVG_TIDS_PER_CLIENT)
+ #define DP_AVG_MSDUS_PER_FLOW 128
+ #define DP_AVG_FLOWS_PER_TID 2
+ #define DP_AVG_MPDUS_PER_TID_MAX 128
