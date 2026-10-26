@@ -229,11 +229,35 @@ với các mục trước. Đối chứng 4096 chạy 4 lượt ngay trước đ
 
 Kết luận: không hạ pool. Giữ 4096.
 
+## 9. Thu nhỏ ring RX stmmac lúc chạy: `ethtool -G eth1 rx 64`, rồi eth0
+
+Vì sao: eth0 và eth1 mỗi cái có page pool 2 MiB (RX 512), nhưng sau 15 giờ eth0 nhận 0
+gói, eth1 210 gói: NSS nắm data plane, ring của host không dùng.
+
+Kết quả: router mất hẳn đường dữ liệu. Không ping được từ LAN, cắm dây vào cổng LAN không
+nhận DHCP, Wi-Fi vẫn phát và client vẫn nối được nhưng không có IP. Đèn vẫn bình
+thường, router không reboot. Phải rút điện; sau boot ring về 512, mọi thứ chạy lại (giá
+trị `ethtool` không lưu).
+
+Nguyên nhân (đọc code, chưa có log vì `/tmp` mất khi rút điện): patch
+`0956-net-stmmac-add-a-data-plane-claim-API-for-the-NSS-firmware` cho qca-dwmac-nss
+"claim" GMAC: dừng DMA của host, tắt NAPI và IRQ, firmware NSS chạy DMA bằng ring riêng.
+Buffer RX của host "stay allocated but unused". `ethtool -G` gọi
+`stmmac_reinit_ringparam()`, tức `stmmac_release()` + `stmmac_open()`, trong khi claim
+vẫn giữ: DMA của host khởi động lại trên cùng controller firmware đang dùng. Claim không
+chặn việc đổi ring.
+
+- Không thử được lúc chạy. Muốn lấy lại ~4 MiB phải sửa ở phía claim: giải phóng buffer
+  RX của host khi claim (cấp lại khi release, vốn đã phải bounce interface), hoặc ring nhỏ
+  từ lúc probe.
+- Riêng việc `ethtool -G` (và có lẽ các thao tác khác gọi release/open, như đổi MTU) làm
+  chết data plane khi đang claim là một lỗi nên báo cho patch 0956: nên trả `-EBUSY`.
+
 ## Việc còn lại
 
 - Chạy dài 1-2 ngày trên bản ở mục 7 để biết phần "không tên" (~61 MiB) có dừng lại không.
 - Nếu chạy dài ổn: gộp commit fraglist GRO vào `cr8806-pr`, gửi patch 0149 thành PR riêng
   vào nss-packages.
-- Thử nghiệm tiếp theo (chưa làm): giảm CE buffer ath11k, link descriptor ath11k,
-  page pool stmmac khi NSS đã nắm data plane, BPF JIT. (`coherent_pool`: xem PR 45; pool
+- Thử nghiệm tiếp theo (chưa làm): giảm CE buffer ath11k, link descriptor ath11k, BPF JIT,
+  giải phóng buffer RX stmmac khi NSS claim (mục 9). (`coherent_pool`: xem PR 45; pool
   bộ đệm trống NSS: mục 8, không hạ được.)
