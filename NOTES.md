@@ -1,17 +1,19 @@
 # CR8806: ghi chép thử nghiệm RAM khi chạy NSS Wi-Fi offload
 
-Branch thử nghiệm, nằm trên `cr8806-pr`. Mỗi thử nghiệm một mục: sửa gì, vì sao, đo thế
-nào, kết quả. Khi ổn định, phần code được gộp lại thành commit trên `cr8806-pr`; thư mục
-`cr8806-memtest/` và các commit `DEBUG:` không đưa vào branch chính.
+Branch thử nghiệm. Mỗi thử nghiệm một mục: sửa gì, vì sao, đo thế nào, kết quả. Khi ổn
+định, phần code được gộp lại thành commit trên branch chính; thư mục `cr8806-memtest/` và
+các commit `DEBUG:` không đưa vào.
 
-Thứ tự commit trên branch này:
+Từ mục 10, branch được dựng lại trên `cr8806-pr45-followup` (cây của bản đang chạy: board,
+profile 256M, fraglist GRO tắt, feed pin có 0149, `coherent_pool=512K`, và ghi chép
+`cr8806-pr45-tests/`). Bản cũ, nằm trên `cr8806-pr` trước PR 45, còn ở
+`cr8806-memtest-v1`. Thứ tự commit:
 
-1. `cr8806-pr`: board CR8806, và profile ath11k 256M mặc định cho CR8806 (mục 2).
-2. `qualcommax: ipq50xx: cr8806: turn fraglist GRO off by default` (mục 5-7). Code thật,
-   sẽ gộp vào `cr8806-pr`.
-3. `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không gộp. Build bản thường thì
-   checkout commit 2.
-4. Các commit `cr8806-memtest:`: ghi chép này và `tools/`.
+1. `cr8806-pr45-followup`.
+2. `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không gộp.
+3. Các commit `cr8806-memtest:`: ghi chép này và `tools/` (mục 1-9).
+4. Thử nghiệm mục 10: hai patch ath11k (`999-997`, `999-998`) và script BPF JIT.
+5. Ghi chép mục 10.
 
 Phần qca-nss-drv nằm trong nss-packages, branch `cr8806-memtest` của fork
 `fanha99/nss-packages`: profile `NSS_MEM_PROFILE_LOW` mặc định cho CR8806 (đã gửi PR
@@ -253,11 +255,69 @@ chặn việc đổi ring.
 - Riêng việc `ethtool -G` (và có lẽ các thao tác khác gọi release/open, như đổi MTU) làm
   chết data plane khi đang claim là một lỗi nên báo cho patch 0956: nên trả `-EBUSY`.
 
+## 10. ath11k: cache riêng cho mỗi pipe CE, link descriptor cho 32 client, BPF JIT
+
+Ba commit, build cùng bản debug page_owner, trên cây của PR 45 (`coherent_pool=512K`, 0149,
+fraglist GRO tắt):
+
+1. `999-997-ath11k-nss-256m-ce-rx-fragment-caches.patch`. Buffer RX của CE (2048 byte)
+   lấy từ `dev_alloc_skb()`, tức cache page-fragment chung theo CPU, 13 buffer trong một
+   chunk 32 KiB, chunk chỉ trả lại khi cả 13 được giải phóng. Ở mục 3, page_owner gán
+   16-18 MiB cho việc nạp lại buffer CE (lúc boot chỉ ~1.3 MiB), trong khi số buffer
+   thật là 800 mỗi radio (CE1 512, CE2 32, CE5 256), ~3.7 MiB cả hai radio. Không driver
+   nào khác dùng cache này: các pipe tự trộn với nhau. CE1 (HTT) nạp liên tục, CE2 (WMI)
+   và CE5 (pktlog) hiếm khi; một buffer của pipe chậm giữ cả chunk buffer HTT đến khi pipe
+   đó quay vòng. Sửa: trong profile NSS 256M, mỗi pipe một `page_frag_cache` riêng, cấp
+   dưới `ce_lock` (vốn đã khoá việc nạp), drain khi dọn pipe.
+2. `999-998-ath11k-nss-256m-link-descriptors.patch`. Pool link descriptor WBM tính cho 64
+   client × 2 TID: 18560 descriptor, làm tròn 32768 × 128 byte = 4 MiB DMA mỗi radio.
+   Profile NSS 256M tính cho 32 client: 9279 → 16384, 2 MiB mỗi radio.
+3. `16_cr8806_bpf_jit_off` (uci-defaults ghi `net.core.bpf_jit_enable=0` vào sysctl.d).
+   **Không có tác dụng**: chương trình BPF duy nhất là `ptp_classifier_init`, kernel tạo
+   và JIT trong `sock_init` lúc boot, trước mọi sysctl. Vùng `bpf_prog_pack` 2 MiB vẫn
+   còn. Muốn bỏ phải tắt `CONFIG_BPF_JIT` trong kernel config, mà config đó dùng chung cho
+   mọi board ipq50xx. Bỏ commit này khi gộp.
+
+Đo: flash slot 1 (giữ config), page_owner lúc 9 phút uptime, rồi 4 lượt như mục 4-6,
+laptop gần AP (-33 dBm, HE160 MCS 11).
+
+page_owner lúc nghỉ, 9 phút uptime (MiB):
+
+| | mục 5 (0149 + tắt GRO, `coherent_pool=2M`) | mục 10 |
+|---|---|---|
+| buffer RX của CE | 17.9 | **4.3** |
+| link descriptor | 8.1 | **4.1** |
+| atomic pool (`coherent_pool`, PR 45) | 6.0 | 1.5 |
+| DP RX / monitor (cache riêng của 993) | 3.6 | 3.5 |
+| payload pool bộ đệm trống NSS | 14.3 | 14.4 |
+| page cache | 24.8 | 36.5 |
+| MemAvailable | 14.2 | **25.2** |
+
+4 lượt: upload 780-812, download 930-943 Mbit/s (bằng các lần trước).
+
+| | trước | lượt 1 | lượt 2 | lượt 3 | lượt 4 |
+|---|---|---|---|---|---|
+| MemAvailable (MiB) | 24 | 21 | 26 | 21 | 22 |
+| MemFree / Cached (MiB) | 25 / 37 | 23 / 36 | 28 / 36 | 23 / 36 | 24 / 35 |
+| SUnreclaim (MiB) | 22 | 23 | 23 | 23 | 24 |
+
+- Buffer CE đứng yên 4.32 MiB qua 4 lượt (mục 5 sau 4 lượt: 14.3). Link descriptor 4.07.
+- Sau 4 lượt page cache còn 35 MiB (bản debug ở mục 5: 5 MiB), MemAvailable thấp nhất khi
+  đang chạy 18 MiB (mục 5: 7-11). Đây là bản debug, bản thường còn thêm ~4.5 MiB
+  (`page_ext`).
+- Không lỗi ath11k/NSS trong dmesg. `rx_desc_alloc_fail` của radio 5 GHz +127 nghìn qua 4
+  lượt, cùng cỡ với mục 2 (pool descriptor RX của NSS, không phải RAM host).
+- `n2h_payload_alloc_fails` tăng một đợt 36 → 1180 lúc đầu lượt upload thứ 4 (MemFree
+  ~18 MiB, gần `min_free_kbytes` 16 MiB), không tăng nữa; throughput lượt đó vẫn 790. Các
+  bản trước đếm 8-34 cho cả bài test. Cần xem lại trên bản thường.
+
+Kết luận: 999-997 và 999-998 lấy lại ~17.5 MiB lúc nghỉ, không giảm throughput.
+
 ## Việc còn lại
 
-- Chạy dài 1-2 ngày trên bản ở mục 7 để biết phần "không tên" (~61 MiB) có dừng lại không.
-- Nếu chạy dài ổn: gộp commit fraglist GRO vào `cr8806-pr`, gửi patch 0149 thành PR riêng
-  vào nss-packages.
-- Thử nghiệm tiếp theo (chưa làm): giảm CE buffer ath11k, link descriptor ath11k, BPF JIT,
-  giải phóng buffer RX stmmac khi NSS claim (mục 9). (`coherent_pool`: xem PR 45; pool
-  bộ đệm trống NSS: mục 8, không hạ được.)
+- Build bản thường (không page_owner) với 999-997 + 999-998, đo lại, theo dõi
+  `n2h_payload_alloc_fails`. Chạy dài 1-2 ngày.
+- 999-998: thử nhiều client (điện thoại, laptop, IoT) để chắc 16384 link descriptor đủ.
+- BPF JIT: chỉ còn cách tắt `CONFIG_BPF_JIT` cho cả ipq50xx; hỏi upstream trước.
+- Giải phóng buffer RX stmmac khi NSS claim (mục 9, sửa patch 0956).
+- `coherent_pool`: xem PR 45. Pool bộ đệm trống NSS: mục 8, không hạ được.
