@@ -313,10 +313,40 @@ page_owner lúc nghỉ, 9 phút uptime (MiB):
 
 Kết luận: 999-997 và 999-998 lấy lại ~17.5 MiB lúc nghỉ, không giảm throughput.
 
+## 11. Bản thường (999-997 + 999-998) và A/B chiều nhận với bản PR 45
+
+Build `cr8806-main` (không page_owner) với hai patch ath11k ở mục 10, flash slot 0. Bản
+đối chứng: bản PR 45 512K, flash slot 1.
+
+4 lượt (9 phút uptime, laptop gần AP), so với bản PR 45 512K đo cùng cách:
+
+| MemAvailable (MiB) | trước | sau lượt 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| PR 45 512K | 19.2 | 15.4 | 18.4 | 15.9 | 14.5 |
+| 999-997 + 999-998 | **28.5** | 27.4 | 25.9 | 24.4 | 22.5 |
+
+Page cache sau 4 lượt 36 MiB (bản PR 45: 20). `n2h_payload_alloc_fails` không tăng (34),
+dmesg sạch. Download 900-931 Mbit/s; upload chỉ 388-690.
+
+Upload thấp nên kiểm tra 999-998: REO và RXDMA dùng link descriptor khi nhận. Trên radio
+5 GHz có `RXDMA Overflow` và `REO Frame OOR` tăng mỗi lần upload. A/B ngay sau boot (~2.5
+phút uptime), 3 lượt upload 30 s + 1 download, laptop -33..-39 dBm:
+
+| | PR 45 512K | 999-997 + 999-998 |
+|---|---|---|
+| upload (Mbit/s) | 652 / 657 / 652 | 679 / 692 / 634 |
+| download (Mbit/s) | 926 | 920 |
+| `RXDMA Overflow` sau 3 lượt | 40972 | 36745 |
+| `REO Frame OOR` sau 3 lượt | 31400 | 26669 |
+| MemAvailable trong lúc đo (MiB) | 15-22 | 25-35 |
+
+- Hai bản như nhau ở chiều nhận; overflow có cả ở bản cũ. 999-998 không làm thiếu link
+  descriptor với một client. Upload hôm đó thấp ở cả hai bản (sóng/laptop), không do patch.
+- Chưa thử nhiều client cùng lúc.
+
 ## Việc còn lại
 
-- Build bản thường (không page_owner) với 999-997 + 999-998, đo lại, theo dõi
-  `n2h_payload_alloc_fails`. Chạy dài 1-2 ngày.
+- Chạy dài 1-2 ngày bản ở mục 11 (slot 0).
 - 999-998: thử nhiều client (điện thoại, laptop, IoT) để chắc 16384 link descriptor đủ.
 - BPF JIT: chỉ còn cách tắt `CONFIG_BPF_JIT` cho cả ipq50xx; hỏi upstream trước.
 - Giải phóng buffer RX stmmac khi NSS claim (mục 9, sửa patch 0956).
