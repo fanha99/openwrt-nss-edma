@@ -201,10 +201,39 @@ lý), và cũng không cần: GRO chạy ở interface nhận.
   lượt, các bản debug chỉ còn 5-6 MiB.
 - Không có page_owner nên MemAvailable lúc đầu cao hơn các bản debug ~4.5 MiB (`page_ext`).
 
+## 8. Hạ pool bộ đệm trống của firmware NSS: 4096 → 2048 (lúc chạy, không lưu)
+
+Sửa: `sysctl -w dev.nss.n2hcfg.n2h_empty_pool_buf_core0=2048`. Giá trị 4096 đến từ
+`NSS_LOW_MEM_EMPTY_POOL_BUF_SZ` (profile LOW); sysctl này ghi được lúc chạy, driver gửi
+`N2H_EMPTY_POOL_BUF_CFG` cho firmware và chờ ACK. Vì sao: lúc nghỉ firmware giữ ~4200
+payload × 4 KiB ≈ 16 MiB, phần lớn nhất trong page_owner sau buffer CE ath11k.
+
+Bản thường (PR 45 + `coherent_pool=512K`), uptime ~17 giờ. Lần này laptop đặt xa AP
+hơn 6 m (tín hiệu -65..-70 dBm, ~360-550 Mbit/s mỗi chiều), nên throughput không so được
+với các mục trước. Đối chứng 4096 chạy 4 lượt ngay trước đó ở cùng chỗ.
+
+| | 4096 (đối chứng) | 2048 |
+|---|---|---|
+| payload firmware giữ lúc nghỉ | ~4200 (`payload_free_count` ~2100-2270) | ~2100 (`payload_free_count` 0) |
+| MemAvailable lúc nghỉ (MiB) | 12-16 | 20 (+7.5 MiB ngay sau khi đổi) |
+| `n2h_payload_alloc_fails` | 8, không tăng qua 4 lượt | tăng ngay khi nghỉ, 3.2 triệu sau ~1 phút tải |
+| lượt upload đầu tiên | 357 Mbit/s | **0 byte**, laptop rớt Wi-Fi |
+
+- Firmware trả payload về ngay khi đổi (skb 4834 → 2096 trong 10 s), nên phần RAM này
+  đúng là do pool giữ.
+- Nhưng ở 2048 firmware hết payload trống: số firmware đang dùng lúc nghỉ đã ~2100, không
+  còn dư. Gói bị bỏ, traffic dừng. Trả về 4096 thì chạy lại bình thường (401/491 Mbit/s).
+- Ngay ở 4096, lúc LAN→Wi-Fi `payload_free_count` xuống ~560 và có vài chục lần alloc
+  fail. Biên ở 4096 đã mỏng; một giá trị giữa (vd. 3072) chỉ lấy được ~4 MiB với rủi ro
+  cạn pool khi tải, nên không theo hướng này.
+
+Kết luận: không hạ pool. Giữ 4096.
+
 ## Việc còn lại
 
 - Chạy dài 1-2 ngày trên bản ở mục 7 để biết phần "không tên" (~61 MiB) có dừng lại không.
 - Nếu chạy dài ổn: gộp commit fraglist GRO vào `cr8806-pr`, gửi patch 0149 thành PR riêng
   vào nss-packages.
-- Thử nghiệm tiếp theo (chưa làm): hạ `n2h_high_water_core0`, giảm CE buffer ath11k,
-  page pool stmmac khi NSS đã nắm data plane, `coherent_pool`.
+- Thử nghiệm tiếp theo (chưa làm): giảm CE buffer ath11k, link descriptor ath11k,
+  page pool stmmac khi NSS đã nắm data plane, BPF JIT. (`coherent_pool`: xem PR 45; pool
+  bộ đệm trống NSS: mục 8, không hạ được.)
