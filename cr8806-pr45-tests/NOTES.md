@@ -78,7 +78,11 @@ Question: the other 256 MB boards run with `coherent_pool=512K`, this board had 
 Does it still work, and what does it give back?
 
 Change: `ipq5018-cr8806.dts`, `coherent_pool=2M` -> `512K` (`swiotlb=1` kept, as on the
-AX3000T v2). Patch 0828 (MPD loader allocates with `GFP_KERNEL`) is in the base.
+AX3000T v2). ~~Patch 0828 (MPD loader allocates with `GFP_KERNEL`) is in the base.~~
+Correction: that is wrong. 2M was needed while the MPD firmware loader (`mdt_loader`) took
+its segment buffers from the atomic pool (patches 0812/0828). Both patches were removed with
+the multiPD rework of ath11k (`10c267b1fb`), and the `mdt_loader.c` of the kernel built here
+has no such allocation, so the base no longer has that user of the pool.
 
 Baseline, same board running the 2M build, idle after a few days:
 
@@ -87,7 +91,8 @@ Baseline, same board running the 2M build, idle after a few days:
 - No `qcom-q6-mpd` errors in dmesg.
 
 Expected: three pools of 512 KiB, 4.5 MiB less held. What to check after the flash:
-both radios up (the QCN6122 Q6 probe is what failed with `-12` without 0828), no `dma alloc`
+both radios up (~~the QCN6122 Q6 probe is what failed with `-12` without 0828~~ a `-12` at
+the Q6 probe would mean something still draws on the atomic pool), no `dma alloc`
 errors in dmesg, `pool_size_*` values, then four rounds.
 
 Result: works. Flashed into the other slot with the config kept (build `0b9f0de696`).
@@ -113,9 +118,16 @@ NSS payloads held after the last round: 4771.
 Reading it:
 
 - MemAvailable after the rounds is 14.5-18.4 MiB, against 12-13 MiB in the reference
-  build, and 19.2 MiB before the load against 18. That is about what the 4.5 MiB of pools
-  should give back; page cache moves MemAvailable by a few MiB between snapshots (it was
-  not monotonic here), so the single numbers are not precise to better than that.
+  build, and 19.2 MiB before the load against 18. ~~That is about what the 4.5 MiB of pools
+  should give back.~~ Correction: that comparison does not show the 4.5 MiB. Before the
+  load the difference is 1.2 MiB, after it 2 to 6 MiB; page cache moves MemAvailable by a
+  few MiB between snapshots (it was not monotonic here), and the reference is another base
+  measured days earlier. What is shown is the pool size itself: the boot log has
+  `DMA: preallocated 512 KiB ... pool for atomic allocations` three times (1.5 MiB held,
+  6 MiB with 2M), there is no CMA on this board so the pools come from the page allocator,
+  and MemTotal is the same (172800 kB) because the pages are allocated, not removed. So
+  4.5 MiB less is held by construction; a measured gain would need the same build booted
+  with 2M and with 512K, idle, MemFree compared at the same uptime. Not done.
 - SUnreclaim is the same as in the reference (23-24.5 MiB): the pools are not slab.
 - Throughput is in the range of the reference (788-841 up, 933-940 down) at the low end
   for upload: round 1 is 759. One run per cell, not enough to call that a change.
@@ -124,8 +136,10 @@ Reading it:
 - `wan` reports `rx-gro-list: off [requested on]`: that interface cannot be switched, and
   it carries no traffic in this test. Not looked into.
 
-Answer to the question: 512K works on this board and gives back 4.5 MiB. With 0828 the
-Q6 probe does not need the atomic pool.
+Answer to the question: 512K works on this board. ~~With 0828 the Q6 probe does not need
+the atomic pool.~~ The Q6 probe does not need the atomic pool in this base (no MPD loader
+in the kernel); the measurement does not separate that from any other cause. It holds
+4.5 MiB less by pool size; the MemAvailable numbers above do not confirm that on their own.
 
 ## 3. `sysupgrade` from each slot
 
