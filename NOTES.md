@@ -4,20 +4,24 @@ Branch thử nghiệm. Mỗi thử nghiệm một mục: sửa gì, vì sao, đo
 định, phần code được gộp lại thành commit trên branch chính; thư mục `cr8806-memtest/` và
 các commit `DEBUG:` không đưa vào.
 
-Sau khi PR 45 được áp vào upstream (`c3po-tag-8021q` 35b1410909: board, profile ath11k
-256M, `coherent_pool=512K`), branch được dựng lại. Thứ tự commit:
+Sau khi upstream nhận PR 50, 51 (`999-997`, fraglist GRO tắt), nss-packages PR 9 (0149) và
+sửa issue 52 (`c3po-tag-8021q` 7930126b66), branch được dựng lại lần nữa:
 
-1. `cr8806-main`: upstream + NSS 256M mặc định cho CR8806 (riêng, upstream không nhận cho
-   cả nhóm 256m) + fraglist GRO tắt (mục 5-7) + `999-997` và `999-998` (mục 10) + feed pin.
-2. `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không gộp.
-3. Các commit `cr8806-memtest:`: ghi chép này và `tools/`.
+1. `main` (nhánh mặc định của fork, nay tên fanha99/openwrt-xiaomi-cr8806-nss): upstream +
+   NSS 256M mặc định cho CR8806 + feed pin (nss lại là kuncy7, đã có 0149) + README trang
+   đầu. Release tag ở đây.
+2. `testing`: `main` + những gì đang thử, hiện là `999-998` (mục 10). Thử ổn mới
+   cherry-pick sang `main`.
+3. `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không gộp.
+4. Các commit `cr8806-memtest:`: ghi chép này và `tools/`.
 
-Bản trước nằm ở `archive/cr8806-memtest-v1` (trên `cr8806-pr` trước PR 45) và
-`archive/cr8806-memtest-v2` (trên `cr8806-pr45-followup`, có commit BPF JIT ở mục 10).
+Bản trước nằm ở `archive/cr8806-memtest-v1` (trên `cr8806-pr` trước PR 45),
+`archive/cr8806-memtest-v2` (trên `cr8806-pr45-followup`, có commit BPF JIT ở mục 10) và
+`archive/cr8806-memtest-20261026` (trên upstream 35b1410909, tag `cr8806-nss-2026.10.26`).
 
-Phần qca-nss-drv nằm trong nss-packages, branch `cr8806-main` (= `cr8806-memtest`):
-upstream `ipq50xx-rebase` (đã có profile `NSS_MEM_PROFILE_LOW` cho CR8806, từ PR 7) + patch
-0149 (mục 4).
+Phần qca-nss-drv dùng thẳng kuncy7/nss-packages `ipq50xx-rebase` (đã có profile
+`NSS_MEM_PROFILE_LOW` cho CR8806 từ PR 7 và 0149 từ PR 9). Fork fanha99/nss-packages chỉ
+còn giữ cho các tag release cũ.
 
 ## Phần cứng và cách đo
 
@@ -347,9 +351,32 @@ phút uptime), 3 lượt upload 30 s + 1 download, laptop -33..-39 dBm:
   descriptor với một client. Upload hôm đó thấp ở cả hai bản (sóng/laptop), không do patch.
 - Chưa thử nhiều client cùng lúc.
 
+## 12. Bản kuncy nhờ chạy: upstream 7930126b66 + `ATH11K_NSS_MEM_PROFILE_256M` (PR 50)
+
+Build đúng cách release của upstream: `.github/ci/ipq50xx/common.config` + `256m.config` +
+`CONFIG_ATH11K_NSS_MEM_PROFILE_256M=y`, không LuCI, không `999-998`. Flash slot 0, chạy dài
+với `memlong.sh` (mỗi 10 phút: meminfo, payload NSS, số client, `reo_reaped`,
+`tx_desc_alloc_fail`, `Frame OOR` của hai radio) và `climon.sh` (mỗi phút mỗi client: tín
+hiệu, byte, ping IPv6 link-local; sự kiện hostapd/ath11k/NSS).
+
+Sau 12,5 giờ, 3 client 5 GHz (một client xem camera liên tục 1,3-2,4 Mbit/s):
+- MemAvailable 16,5-25 MiB theo tải, `SUnreclaim` về lại 23,3 MiB khi rảnh.
+- `n2h_payload_alloc_fails` 36, tất cả trong 2 phút đầu, sau đó không tăng.
+- 5 GHz: `Frame OOR` 11.138, `tx_desc_alloc_fail` 58.758 / 3,81 M TX (1,5 %). Chưa có số
+  đối chứng không profile.
+- Issue 53 (QCN6122 ngừng nhận client sau 3-14 giờ): chưa gặp, `reo_reaped` vẫn tăng,
+  client mới vào được ở 9,9 và 11,1 giờ.
+
+`simulate_fw_crash` (12,7 giờ): trên IPQ5018 hai radio là hai user PD trên cùng một Q6, nên
+assert radio nào cũng là lỗi root PD. q6wcss khởi động lại trong 0,15 s, cả hai radio
+khôi phục. Client 5 GHz vào lại sau 4-35 s. Không mất bộ nhớ, payload fail không tăng.
+Lần assert 5 GHz thiếu dòng `successfully recovered` vì `__ath11k_warn()` bị
+ratelimit sau 11 cảnh báo WMI -108 lúc firmware đang tắt.
+
 ## Việc còn lại
 
-- Chạy dài 1-2 ngày bản ở mục 11 (slot 0).
+- Chạy tiếp mục 12 vài ngày, rồi chạy ngắn cùng commit không profile để so `Frame OOR` và
+  `tx_desc_alloc_fail`.
 - 999-998: thử nhiều client (điện thoại, laptop, IoT) để chắc 16384 link descriptor đủ.
 - BPF JIT: chỉ còn cách tắt `CONFIG_BPF_JIT` cho cả ipq50xx; hỏi upstream trước.
 - Giải phóng buffer RX stmmac khi NSS claim (mục 9, sửa patch 0956).
