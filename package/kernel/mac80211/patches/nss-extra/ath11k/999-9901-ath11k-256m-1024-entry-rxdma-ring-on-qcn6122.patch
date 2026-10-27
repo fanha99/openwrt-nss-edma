@@ -1,0 +1,62 @@
+From: fanha99 <fanha99@hotmail.com>
+Subject: [PATCH] wifi: ath11k: 1024-entry RXDMA buffer ring on QCN6122 in the 256M profile
+
+999-990 gives both radios of a 256 MiB board a 512-entry RXDMA buffer
+ring. On a Xiaomi CR8806 (IPQ5018 + QCN6122, NSS Wi-Fi offload) the
+5 GHz QCN6122 ring runs out under upload bursts: five rounds of iperf3
+upload at 300-450 Mbit/s gave 78k RXDMA overflows. With 1024 entries
+the same load gave 433, with 2048 49-102. The 2.4 GHz IPQ5018 radio
+saw no overflow at 512.
+
+Size the ring per radio: 1024 for QCN6122, DP_RXDMA_BUF_RING_SIZE for
+the rest. The NSS Wi-Fi datapath sizes its RX descriptor pool from the
+same value, so use it there too. 2048 on both radios held about 3000
+more 4 KiB buffers and cost ~10 MiB of MemAvailable; 1024 on QCN6122
+alone adds 512 buffers.
+
+Signed-off-by: fanha99 <fanha99@hotmail.com>
+---
+--- a/drivers/net/wireless/ath/ath11k/dp.h
++++ b/drivers/net/wireless/ath/ath11k/dp.h
+@@ -250,6 +250,19 @@
+ #endif
+ #define DP_RXDMA_REFILL_RING_SIZE	ATH11K_DP_RXDMA_REFILL_RING_SIZE
+ #define DP_RXDMA_NSS_REFILL_RING_SIZE	ATH11K_DP_RXDMA_NSS_REFILL_RING_SIZE
++/* With the 256M profile, give the 5 GHz QCN6122 radio a 1024-entry RXDMA
++ * buffer ring: at 512 it runs out under upload bursts (RXDMA overflow).
++ * The IPQ5018 2.4 GHz radio does not get near 512 and keeps it. The NSS
++ * Wi-Fi datapath sizes its RX descriptor pool from the same value.
++ */
++#ifdef CPTCFG_ATH11K_MEM_PROFILE_256M
++#define DP_RXDMA_BUF_RING_SIZE_QCN6122	1024
++#define ATH11K_DP_RXDMA_BUF_RING_SIZE(ab) \
++	((ab)->hw_rev == ATH11K_HW_QCN6122_HW10 ? \
++	 DP_RXDMA_BUF_RING_SIZE_QCN6122 : DP_RXDMA_BUF_RING_SIZE)
++#else
++#define ATH11K_DP_RXDMA_BUF_RING_SIZE(ab)	DP_RXDMA_BUF_RING_SIZE
++#endif
+ #ifdef CPTCFG_ATH11K_MEM_PROFILE_256M
+ #define DP_RXDMA_ERR_DST_RING_SIZE	128
+ #else
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -673,7 +673,7 @@
+ 	ret = ath11k_dp_srng_setup(ar->ab,
+ 				   &dp->rx_refill_buf_ring.refill_buf_ring,
+ 				   HAL_RXDMA_BUF, 0,
+-				   dp->mac_id, DP_RXDMA_BUF_RING_SIZE);
++				   dp->mac_id, ATH11K_DP_RXDMA_BUF_RING_SIZE(ab));
+ 	if (ret) {
+ 		ath11k_warn(ar->ab, "failed to setup rx_refill_buf_ring\n");
+ 		return ret;
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -3279,7 +3279,7 @@
+ 	pdevmsg->radio_id = radio_id;
+ 	pdevmsg->lmac_id = ar->lmac_id;
+ 	pdevmsg->target_pdev_id = ar->pdev->pdev_id;
+-	pdevmsg->num_rx_swdesc = WIFILI_RX_DESC_POOL_WEIGHT * DP_RXDMA_BUF_RING_SIZE;
++	pdevmsg->num_rx_swdesc = WIFILI_RX_DESC_POOL_WEIGHT * ATH11K_DP_RXDMA_BUF_RING_SIZE(ab);
+ 	pdevmsg->scheme_id = scheme_id;
+ 
+ 	/* Store rxdma ring info to the message */
