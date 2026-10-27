@@ -479,10 +479,17 @@ tràn ring, nên OOR không dùng để đánh giá ring.
 
 Kết quả: patch `999-9901-ath11k-256m-1024-entry-rxdma-ring-on-qcn6122.patch` thêm
 `ATH11K_DP_RXDMA_BUF_RING_SIZE(ab)` (1024 cho `ATH11K_HW_QCN6122_HW10`, còn lại
-`DP_RXDMA_BUF_RING_SIZE`), dùng cho cả ring và pool descriptor wifili. Đã gửi PR lên
-kuncy7/openwrt-nss-edma, đưa vào `main` và release `cr8806-nss-2026.10.27` (có LuCI). Router:
-slot 0 = bản thử tách ring (cùng ring với release), slot 1 = bản 2048. SSID tạm 2.4 GHz giữ
-lại để soak tới trưa 2026-10-28, cần thì đo lại.
+`DP_RXDMA_BUF_RING_SIZE`), dùng cho cả ring và pool descriptor wifili. Đã gửi PR
+kuncy7/openwrt-nss-edma#55, đưa vào `main` và release `cr8806-nss-2026.10.27` (có LuCI).
+
+Image release (slot 1, uptime 20-40 phút, cùng 5 lượt 5 GHz): `Overflow` +54, MemAvailable
+lúc nghỉ 16-23 MiB, thấp nhất 14 MiB, upload 209-366, download 403-687 Mbit/s (tín hiệu tụt
+xuống −72 dBm ở lượt 3-5), `n2h_payload_alloc_fails` không tăng. Lần đo đầu bị lẫn băng: sau
+reboot laptop vào SSID tạm 2.4 GHz trước (5 GHz còn chờ DFS 60 s), nên mỗi lần reboot phải
+kiểm tra laptop ở SSID nào trước khi đo.
+
+Router: slot 1 = release `cr8806-nss-2026.10.27`, soak qua đêm tới trưa 2026-10-28; slot 0 =
+bản thử tách ring (cùng code, không LuCI). SSID tạm 2.4 GHz giữ tới lúc đo lại.
 
 ## Việc còn lại
 
