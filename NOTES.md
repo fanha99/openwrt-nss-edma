@@ -14,8 +14,8 @@ Sau khi upstream nhận PR 50, 51 (`999-997`, fraglist GRO tắt), nss-packages 
 sửa issue 52 (`c3po-tag-8021q` 7930126b66), branch được dựng lại lần nữa:
 
 1. `main` (nhánh mặc định của fork fanha99/openwrt-xiaomi-cr8806-nss): upstream + NSS 256M
-   mặc định cho CR8806 + feed pin (nss lại là kuncy7, đã có 0149) + README trang đầu.
-   Release tag ở đây.
+   mặc định cho CR8806 + feed pin (nss lại là kuncy7, đã có 0149) + README trang đầu +
+   ring RXDMA 1024 cho QCN6122 (mục 14, đã gửi PR). Release tag ở đây.
 2. `testing`: `main` + những gì đang thử, hiện là `999-998` (mục 10). Thử ổn mới
    cherry-pick sang `main`.
 3. `cr8806-memtest`: `testing` + `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không
@@ -419,6 +419,9 @@ Cùng bản ở mục 12, uptime 14,5 giờ. 5 lượt, mỗi lượt: upload `-
     10:40-10:50 (lượt 1, phần lớn lượt 2) +247 nghìn; 10:50-11:00 (hết lượt 2, lượt 3, 4)
     +6,4 triệu; 11:00-11:10 (lượt 5) +2,6 triệu. Download (LAN → Wi-Fi) là nguồn TX lớn
     nhất nên dễ là nguyên nhân, nhưng chưa chứng minh; upload cũng gửi ACK TCP ra Wi-Fi.
+  - Đính chính (mục 14): `tx_desc_alloc_fail` đếm số lần thử cấp phát, không đếm gói. Ở
+    2.4 GHz nó tăng 24 triệu trong một phút download ~85 Mbit/s (~400 nghìn/s, trong khi
+    chỉ ~7 nghìn gói/s). Nên chỉ xem có tăng hay không, độ lớn không có ý nghĩa.
   - Bản này bật `ATH11K_NSS_MEM_PROFILE_256M`, profile giới hạn pool TX descriptor ở
     4096 (`ATH11K_NSS_256M_TX_DESC_LIMIT`, patch 999-992).
     Chưa biết có phải do profile không: cần chạy cùng tải trên bản không profile (A/B ở
@@ -427,20 +430,67 @@ Cùng bản ở mục 12, uptime 14,5 giờ. 5 lượt, mỗi lượt: upload `-
 - Đã gửi lên #53. `memlong.sh` trên router tự lưu danh sách kuncy cần nếu `reo_reaped`
   5 GHz đứng yên khi còn client.
 
+## 14. Kích thước ring RXDMA cho issue 53: 512, 2048, rồi tách 1024 (5 GHz) / 512 (2.4 GHz)
+
+Cùng commit 7930126b66, cùng config với mục 12, chỉ đổi ring. Tải: 5 lượt như mục 13 (upload
+`-P 8`, upload `-P 4`, download `-P 4`, nghỉ, mỗi pha 60 s), đọc số sau mỗi pha bằng
+`tools/rxsnap.sh` (5 GHz) và `tools/rxsnap24.sh` (2.4 GHz). Các lần chạy nối nhau trong cùng
+buổi chiều, laptop để một chỗ.
+
+Đọc code (`backports` sau khi áp patch):
+- Chỉ `DP_RXDMA_BUF_RING_SIZE` là kích thước ring: `ath11k_dp_rx_pdev_srng_alloc()` tạo ring
+  bằng nó, và `ath11k_nss_pdev_init()` đặt `num_rx_swdesc = 3 × DP_RXDMA_BUF_RING_SIZE`.
+- `ATH11K_DP_RXDMA_REFILL_RING_SIZE` là kích thước buffer (byte): nó vào tham số
+  `rx_buf_size` của `ath11k_dp_tx_htt_rx_filter_setup()`. Khi NSS bật chỉ đường monitor dùng;
+  đường dữ liệu dùng `DP_RXDMA_NSS_REFILL_RING_SIZE` (1816). Patch 999-990 và đề nghị
+  2048/2048 ở issue 53 đều coi nó là kích thước ring. Đổi nó không ảnh hưởng ring dữ liệu.
+- `rx_desc_in_use` lúc nghỉ = kích thước ring − 1 (511, 1023, 2047), dùng để xác nhận bản
+  đang chạy.
+
+5 GHz (QCN6122):
+
+| ring | 512 (mục 12, uptime 17,8 h) | 2048 cả hai radio, lần 1 / lần 2 | 1024 chỉ QCN6122 |
+|---|---|---|---|
+| RXDMA `Overflow` qua 5 lượt | +78.325 | +49 / +102 | +433 |
+| MemAvailable lúc nghỉ giữa lượt | 18-22 MiB | 12-15 / 14-16 MiB | 17-20 MiB |
+| MemAvailable thấp nhất | 12 MiB | 6 / 9 MiB | 17 MiB |
+| upload Mbit/s | 308-389 | 246-325 / 315-408 | 405-533 |
+| download Mbit/s | 579-666 | 584-630 / 725-831 | 714-813 |
+| `n2h_payload_alloc_fails` | không tăng | không tăng | không tăng |
+
+2.4 GHz (IPQ5018) ở 512, qua SSID tạm `CR8806-test24` trên mạng lan (kênh 1, HE20, −52 dBm):
+upload 40-57, download 74-85 Mbit/s, `Overflow` 0. `rx_desc_in_use` lên tới 565 lúc upload
+(buffer đang chờ REO), về 511 ở mọi lần nghỉ. `Frame OOR` ~30 nghìn mỗi phút upload dù không
+tràn ring, nên OOR không dùng để đánh giá ring.
+
+- Ring 512 ở 5 GHz cạn khi upload dồn dập. 1024 đã bỏ gần hết tràn; 2048 bớt thêm vài trăm.
+- RAM: ngay sau boot, bản 2048 giữ 7058 payload so với 4050 ở bản 512, MemAvailable 17,7 so
+  với 28,4 MiB (~3000 buffer 4 KiB, 1536 mỗi radio). 1024 chỉ cho QCN6122 thêm 512 buffer
+  (~2 MiB) cộng descriptor wifili.
+- Đính chính giả định ở "Việc còn lại" trước đây: pool payload NSS không cạn khi ring lớn.
+  Host tự cấp thêm khi `payload_free_count` dưới `n2h_low_water_core0` (2048, trần
+  `n2h_high_water_core0` 16336). `payload_free_count` giữ 2050-2300 ở mọi lần chạy. Mục 8
+  cạn có lẽ vì hạ pool xuống bằng đúng mức low water; chưa kiểm lại.
+- Upload thấp ở lần 1 của bản 2048 là do sóng: lần 2 cùng bản cao hơn bản 512.
+- Không bản nào bị kẹt, kể cả 512. Kết quả chỉ cho thấy ring 512 cạn, chưa chứng minh đó là
+  nguyên nhân kẹt ở AX53.
+- Hạn chế: bản 512 đo sau 17,8 h, các bản khác dưới 1 h, nên số RAM chưa so công bằng. Lần
+  1024 có sóng tốt nhất trong ngày. Mới reboot, chưa rút điện khởi động lại.
+
+Kết quả: patch `999-9901-ath11k-256m-1024-entry-rxdma-ring-on-qcn6122.patch` thêm
+`ATH11K_DP_RXDMA_BUF_RING_SIZE(ab)` (1024 cho `ATH11K_HW_QCN6122_HW10`, còn lại
+`DP_RXDMA_BUF_RING_SIZE`), dùng cho cả ring và pool descriptor wifili. Đã gửi PR lên
+kuncy7/openwrt-nss-edma, đưa vào `main` và release `cr8806-nss-2026.10.27` (có LuCI). Router:
+slot 0 = bản thử tách ring (cùng ring với release), slot 1 = bản 2048. SSID tạm 2.4 GHz giữ
+lại để soak tới trưa 2026-10-28, cần thì đo lại.
+
 ## Việc còn lại
 
-- Chạy tiếp mục 12 vài ngày, rồi chạy ngắn cùng commit không profile để so `Frame OOR`,
-  `Overflow` và `tx_desc_alloc_fail`.
-- Issue 53: thử ring RXDMA/refill 2048 (kuncy đề nghị) trên CR8806. Đo tốn bao nhiêu
-  MemAvailable và `Overflow` dưới cùng tải ở mục 13.
-  - Không nhầm với mục 8: đó là pool bộ đệm trống của firmware NSS (4096 → 2048),
-    còn đây là kích thước ring 999-990 (512 → 2048).
-  - Nhưng hai thứ dính nhau (giả định, cần đo): buffer nạp vào ring RXDMA lấy từ pool đó.
-    Lúc nghỉ firmware đã dùng ~2100/4096. Ring 5 GHz 2048 giữ thêm ~1500, còn dư ~500,
-    trong khi lúc LAN→Wi-Fi ở mục 8 chỗ trống đã xuống ~560. Dễ cạn pool như mục 8.
-  - Khi thử, theo dõi thêm `payload_free_count` và `n2h_payload_alloc_fails` (n2h) lúc
-    nghỉ và lúc tải. Nếu cạn, tăng `n2h_empty_pool_buf_core0` rồi tính cả phần RAM đó
-    (~6 MiB mỗi radio với buffer 4 KiB) vào chi phí.
+- PR 50: bản mục 12 đã soak 17,8 h (log lưu local). Còn chạy ngắn cùng commit không profile
+  để so `Frame OOR`, `Overflow` và `tx_desc_alloc_fail` (chỉ xem có tăng hay không).
+- Issue 53 / mục 14: soak bản ring 1024/512 tới trưa 2026-10-28, đo lại 5 GHz và 2.4 GHz
+  khi đã chạy lâu để so RAM công bằng với bản 512. Rút điện khởi động lại một lần.
+- Mục 8: kiểm lại vì sao hạ pool xuống 2048 làm cạn (pool bằng đúng `n2h_low_water_core0`?).
 - 999-998: thử nhiều client (điện thoại, laptop, IoT) để chắc 16384 link descriptor đủ.
 - BPF JIT: chỉ còn cách tắt `CONFIG_BPF_JIT` cho cả ipq50xx; hỏi upstream trước.
 - Giải phóng buffer RX stmmac khi NSS claim (mục 9, sửa patch 0956).
