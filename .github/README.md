@@ -10,7 +10,7 @@ the NSS firmware instead of on the CPU.
 > needs a UART and writes to flash. A wrong step can leave the router
 > unbootable. Keep the other firmware slot as your way back. No warranty.
 
-- **Download:** [Releases](../../releases). Every release lists what changed,
+- **Download:** [Releases](https://github.com/fanha99/openwrt-xiaomi-cr8806-nss/releases). Every release lists what changed,
   what was tested and the flashing steps.
 - **Without NSS:** [fanha99/openwrt-xiaomi-cr8806](https://github.com/fanha99/openwrt-xiaomi-cr8806)
   is plain OpenWrt for the same router.
@@ -25,7 +25,13 @@ the NSS firmware instead of on the CPU.
 |---|---|
 | `main` | The default branch: kuncy7's `c3po-tag-8021q` plus a few CR8806 commits. Releases are tagged here. |
 | `testing` | `main` plus changes under test. They move to `main` once they have run well for a while, and go upstream as pull requests. |
-| `cr8806-memtest` | `testing` plus a debug commit and the test notes (`cr8806-memtest/NOTES.md`, in Vietnamese). |
+| `cr8806-memtest` | `testing` plus debug-only commits (page_owner), for measuring. |
+| `notes` | Test notes only, no OpenWrt tree (see below). |
+
+**Test notes:** what was tried on the CR8806, why, how it was measured and what came
+out. [`NOTES.md`](https://github.com/fanha99/openwrt-xiaomi-cr8806-nss/blob/notes/NOTES.md) covers the RAM and Wi-Fi tests and is in
+Vietnamese. [`pr45-followup.md`](https://github.com/fanha99/openwrt-xiaomi-cr8806-nss/blob/notes/pr45-followup.md) has the steps for the
+board PR review. The measuring scripts are in [`tools/`](https://github.com/fanha99/openwrt-xiaomi-cr8806-nss/tree/notes/tools).
 
 ## What you get
 
