@@ -420,6 +420,14 @@ Cùng bản ở mục 12, uptime 14,5 giờ. 5 lượt, mỗi lượt: upload `-
   `Overflow` và `tx_desc_alloc_fail`.
 - Issue 53: thử ring RXDMA/refill 2048 (kuncy đề nghị) trên CR8806. Đo tốn bao nhiêu
   MemAvailable và `Overflow` dưới cùng tải ở mục 13.
+  - Không nhầm với mục 8: đó là pool bộ đệm trống của firmware NSS (4096 → 2048),
+    còn đây là kích thước ring 999-990 (512 → 2048).
+  - Nhưng hai thứ dính nhau (giả định, cần đo): buffer nạp vào ring RXDMA lấy từ pool đó.
+    Lúc nghỉ firmware đã dùng ~2100/4096. Ring 5 GHz 2048 giữ thêm ~1500, còn dư ~500,
+    trong khi lúc LAN→Wi-Fi ở mục 8 chỗ trống đã xuống ~560. Dễ cạn pool như mục 8.
+  - Khi thử, theo dõi thêm `payload_free_count` và `n2h_payload_alloc_fails` (n2h) lúc
+    nghỉ và lúc tải. Nếu cạn, tăng `n2h_empty_pool_buf_core0` rồi tính cả phần RAM đó
+    (~6 MiB mỗi radio với buffer 4 KiB) vào chi phí.
 - 999-998: thử nhiều client (điện thoại, laptop, IoT) để chắc 16384 link descriptor đủ.
 - BPF JIT: chỉ còn cách tắt `CONFIG_BPF_JIT` cho cả ipq50xx; hỏi upstream trước.
 - Giải phóng buffer RX stmmac khi NSS claim (mục 9, sửa patch 0956).
