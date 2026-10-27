@@ -45,9 +45,12 @@ board PR review. The measuring scripts are in [`tools/`](https://github.com/fanh
   `files/` overlay: OpenWrt defaults, no root password, Wi-Fi off,
   LAN 192.168.1.1.
 
-`main` is kuncy7's `c3po-tag-8021q` plus two commits:
+`main` is kuncy7's `c3po-tag-8021q` plus three commits:
 - The ath11k 256M NSS memory profile on by default for the CR8806.
 - The feeds pinned to the revisions the images are built from.
+- A 1024-entry RXDMA ring for the 5 GHz QCN6122 radio instead of 512 (the
+  2.4 GHz radio keeps 512). It stops the 5 GHz RX ring from overflowing
+  under upload bursts. Offered upstream as a pull request.
 
 Older releases were built on earlier trees. Their notes list what each one
 carries.
