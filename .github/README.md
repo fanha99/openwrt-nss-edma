@@ -49,6 +49,10 @@ board PR review. The measuring scripts are in [`tools/`](https://github.com/fanh
 - The ath11k 256M NSS memory profile on by default for the CR8806.
 - The feeds pinned to the revisions the images are built from.
 
+The 1024-entry RXDMA ring for the 5 GHz QCN6122 radio (the 2.4 GHz radio
+keeps 512) is upstream since kuncy7/openwrt-nss-edma#55. It stops the 5 GHz
+RX ring from overflowing under upload bursts.
+
 Older releases were built on earlier trees. Their notes list what each one
 carries.
 
