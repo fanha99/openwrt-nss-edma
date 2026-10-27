@@ -398,6 +398,7 @@ Cùng bản ở mục 12, uptime 14,5 giờ. 5 lượt, mỗi lượt: upload `-
 | REO `Frame OOR` | 12.635 | 58.275 |
 | MemAvailable | 19 MiB | 13-25 MiB trong lúc chạy, 24 MiB sau |
 | `kmalloc-4k` partial | 39 | 3-115 trong lúc chạy, 18 sau |
+| `tx_desc_alloc_fail` 5 GHz | 58.758 | 9.300.862 |
 
 - Upload 357-455 Mbit/s, download 639-740 Mbit/s. Thấp hơn các lần trước vì client xa
   hơn (PHY 0,5-1,4 Gbit/s).
@@ -411,6 +412,18 @@ Cùng bản ở mục 12, uptime 14,5 giờ. 5 lượt, mỗi lượt: upload `-
   - Trong lúc tải nặng, số này trôi thêm khoảng 165 sau 44 triệu khung, trong khi
     `rx_desc_in_use` vẫn 511.
   - Kết luận: dựa vào `rx_desc_in_use`, không dựa vào hiệu số.
+- `tx_desc_alloc_fail` 5 GHz (wifili hết TX descriptor khi gửi gói ra Wi-Fi) tăng khoảng
+  9,2 triệu, chỉ trong lúc tải nặng. Trước đó đứng ở 58.758 từ sáng; sau đó 2,5 giờ dùng
+  bình thường không tăng thêm.
+  - `memlong.sh` lấy mẫu 10 phút một lần, nên không tách được upload với download:
+    10:40-10:50 (lượt 1, phần lớn lượt 2) +247 nghìn; 10:50-11:00 (hết lượt 2, lượt 3, 4)
+    +6,4 triệu; 11:00-11:10 (lượt 5) +2,6 triệu. Download (LAN → Wi-Fi) là nguồn TX lớn
+    nhất nên dễ là nguyên nhân, nhưng chưa chứng minh; upload cũng gửi ACK TCP ra Wi-Fi.
+  - Bản này bật `ATH11K_NSS_MEM_PROFILE_256M`, profile giới hạn pool TX descriptor ở
+    4096 (`ATH11K_NSS_256M_TX_DESC_LIMIT`, patch 999-992).
+    Chưa biết có phải do profile không: cần chạy cùng tải trên bản không profile (A/B ở
+    "Việc còn lại"), và lần sau ghi `tx_desc_alloc_fail` theo từng phút (thêm vào
+    `rxsnap.sh`).
 - Đã gửi lên #53. `memlong.sh` trên router tự lưu danh sách kuncy cần nếu `reo_reaped`
   5 GHz đứng yên khi còn client.
 
