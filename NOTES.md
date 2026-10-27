@@ -1,23 +1,29 @@
 # CR8806: ghi chép thử nghiệm RAM khi chạy NSS Wi-Fi offload
 
-Branch thử nghiệm. Mỗi thử nghiệm một mục: sửa gì, vì sao, đo thế nào, kết quả. Khi ổn
-định, phần code được gộp lại thành commit trên branch chính; thư mục `cr8806-memtest/` và
-các commit `DEBUG:` không đưa vào.
+Branch `notes` chỉ chứa ghi chép, không chứa cây OpenWrt:
+- `NOTES.md` (file này): các thử nghiệm RAM và Wi-Fi trên CR8806.
+- `pr45-followup.md`: các bước test cho review PR 45 (tiếng Anh).
+- `tools/`: script đo dùng trong hai file trên.
+
+Mỗi thử nghiệm một mục: sửa gì, vì sao, đo thế nào, kết quả. Code nằm ở các branch của
+cây OpenWrt (bên dưới). Khi ổn định, code được cherry-pick sang `main`. Các commit
+`DEBUG:` không đưa vào. Trước đây ghi chép nằm trong thư mục `cr8806-memtest/` của branch
+`cr8806-memtest`. Lịch sử được giữ nguyên khi tách sang branch này.
 
 Sau khi upstream nhận PR 50, 51 (`999-997`, fraglist GRO tắt), nss-packages PR 9 (0149) và
 sửa issue 52 (`c3po-tag-8021q` 7930126b66), branch được dựng lại lần nữa:
 
-1. `main` (nhánh mặc định của fork, nay tên fanha99/openwrt-xiaomi-cr8806-nss): upstream +
-   NSS 256M mặc định cho CR8806 + feed pin (nss lại là kuncy7, đã có 0149) + README trang
-   đầu. Release tag ở đây.
+1. `main` (nhánh mặc định của fork fanha99/openwrt-xiaomi-cr8806-nss): upstream + NSS 256M
+   mặc định cho CR8806 + feed pin (nss lại là kuncy7, đã có 0149) + README trang đầu.
+   Release tag ở đây.
 2. `testing`: `main` + những gì đang thử, hiện là `999-998` (mục 10). Thử ổn mới
    cherry-pick sang `main`.
-3. `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không gộp.
-4. Các commit `cr8806-memtest:`: ghi chép này và `tools/`.
+3. `cr8806-memtest`: `testing` + `DEBUG: ... enable page_owner` (mục 3). Chỉ để đo, không
+   gộp.
+4. `notes`: ghi chép này.
 
-Bản trước nằm ở `archive/cr8806-memtest-v1` (trên `cr8806-pr` trước PR 45),
-`archive/cr8806-memtest-v2` (trên `cr8806-pr45-followup`, có commit BPF JIT ở mục 10) và
-`archive/cr8806-memtest-20261026` (trên upstream 35b1410909, tag `cr8806-nss-2026.10.26`).
+Các bản dựng trước chỉ còn ở máy local (`archive/cr8806-memtest-v1`, `-v2`,
+`-20261026`). Bản ngày 2026-10-26 tương ứng tag `cr8806-nss-2026.10.26`.
 
 Phần qca-nss-drv dùng thẳng kuncy7/nss-packages `ipq50xx-rebase` (đã có profile
 `NSS_MEM_PROFILE_LOW` cho CR8806 từ PR 7 và 0149 từ PR 9). Fork fanha99/nss-packages chỉ
@@ -359,7 +365,7 @@ với `memlong.sh` (mỗi 10 phút: meminfo, payload NSS, số client, `reo_reap
 `tx_desc_alloc_fail`, `Frame OOR` của hai radio) và `climon.sh` (mỗi phút mỗi client: tín
 hiệu, byte, ping IPv6 link-local; sự kiện hostapd/ath11k/NSS).
 
-Sau 12,5 giờ, 3 client 5 GHz (một client xem camera liên tục 1,3-2,4 Mbit/s):
+Sau 12,5 giờ, 3 client 5 GHz (một client xem camera liên tục 1,3-2,4 Mbit/s). Tải nhẹ: khoảng 7,5 giờ có lưu lượng, ban đêm gần như không có gì, không có đợt dồn dập (xem mục 13):
 - MemAvailable 16,5-25 MiB theo tải, `SUnreclaim` về lại 23,3 MiB khi rảnh.
 - `n2h_payload_alloc_fails` 36, tất cả trong 2 phút đầu, sau đó không tăng.
 - 5 GHz: `Frame OOR` 11.138, `tx_desc_alloc_fail` 58.758 / 3,81 M TX (1,5 %). Chưa có số
@@ -373,10 +379,47 @@ khôi phục. Client 5 GHz vào lại sau 4-35 s. Không mất bộ nhớ, paylo
 Lần assert 5 GHz thiếu dòng `successfully recovered` vì `__ath11k_warn()` bị
 ratelimit sau 11 cảnh báo WMI -108 lúc firmware đang tắt.
 
+## 13. Tải nặng 5 GHz cho issue 53 (ring RXDMA 512)
+
+Issue kuncy7/openwrt-nss-edma#53: trên AX53 v2 (cũng QCN6122, 256 MB), sau 3-14 giờ 5 GHz
+ngừng nhận. Khoảng 800 buffer RX vào phần cứng rồi không ra, `rx_desc_in_use` 1324. kuncy
+nghi ring RXDMA/refill 512 phần tử (patch 999-990) bị cạn khi có đợt dữ liệu dồn dập.
+
+Cùng bản ở mục 12, uptime 14,5 giờ. 5 lượt, mỗi lượt: upload `-P 8` 60 s, upload `-P 4`
+60 s, download `-P 4` 60 s, nghỉ 60 s. Một client HE160 ở xa hơn các lần trước (−67 đến
+−74 dBm), server cắm dây.
+
+| | trước | sau 5 lượt |
+|---|---|---|
+| `reo_reaped` 5 GHz | 2.769.683 | 47.290.877 |
+| `rx_desc_in_use` | 511 | 511 ở mọi lần chụp |
+| `rxdma_hw_desc_unavailable` / `rx_desc_alloc_fail` | 0 / 0 | 0 / 0 |
+| RXDMA `Overflow` | 1.721 | 171.850 |
+| REO `Frame OOR` | 12.635 | 58.275 |
+| MemAvailable | 19 MiB | 13-25 MiB trong lúc chạy, 24 MiB sau |
+| `kmalloc-4k` partial | 39 | 3-115 trong lúc chạy, 18 sau |
+
+- Upload 357-455 Mbit/s, download 639-740 Mbit/s. Thấp hơn các lần trước vì client xa
+  hơn (PHY 0,5-1,4 Gbit/s).
+- Ring 512 có tràn: `Overflow` tăng khoảng 170 nghìn, toàn bộ trong các phút upload.
+  Nhưng lần nào cũng hồi phục, không kẹt.
+- Số buffer "bị giữ" (`rxdma_buf_replenished` − `reo_reaped` − `wbm_src_dma` −
+  `wbm_src_reo`):
+  - Trước hai lần crash là 517.
+  - Ngay sau hai lần crash là 1.539. Mỗi lần firmware khởi động lại nạp lại ring (+511),
+    còn bộ đếm không reset.
+  - Trong lúc tải nặng, số này trôi thêm khoảng 165 sau 44 triệu khung, trong khi
+    `rx_desc_in_use` vẫn 511.
+  - Kết luận: dựa vào `rx_desc_in_use`, không dựa vào hiệu số.
+- Đã gửi lên #53. `memlong.sh` trên router tự lưu danh sách kuncy cần nếu `reo_reaped`
+  5 GHz đứng yên khi còn client.
+
 ## Việc còn lại
 
-- Chạy tiếp mục 12 vài ngày, rồi chạy ngắn cùng commit không profile để so `Frame OOR` và
-  `tx_desc_alloc_fail`.
+- Chạy tiếp mục 12 vài ngày, rồi chạy ngắn cùng commit không profile để so `Frame OOR`,
+  `Overflow` và `tx_desc_alloc_fail`.
+- Issue 53: thử ring RXDMA/refill 2048 (kuncy đề nghị) trên CR8806. Đo tốn bao nhiêu
+  MemAvailable và `Overflow` dưới cùng tải ở mục 13.
 - 999-998: thử nhiều client (điện thoại, laptop, IoT) để chắc 16384 link descriptor đủ.
 - BPF JIT: chỉ còn cách tắt `CONFIG_BPF_JIT` cho cả ipq50xx; hỏi upstream trước.
 - Giải phóng buffer RX stmmac khi NSS claim (mục 9, sửa patch 0956).
