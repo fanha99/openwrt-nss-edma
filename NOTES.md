@@ -488,6 +488,13 @@ xuống −72 dBm ở lượt 3-5), `n2h_payload_alloc_fails` không tăng. Lầ
 reboot laptop vào SSID tạm 2.4 GHz trước (5 GHz còn chờ DFS 60 s), nên mỗi lần reboot phải
 kiểm tra laptop ở SSID nào trước khi đo.
 
+Upstream (2026-10-27): kuncy7 merge PR 55 nguyên commit (`d1c21dcf09`), rồi thêm `c36db6321c`
+bỏ hunk `ATH11K_DP_RXDMA_REFILL_RING_SIZE` 512 khỏi 999-990, trả độ dài buffer RX về 2048. Với
+NSS, ring dữ liệu dùng 1816 nên không đổi gì; hunk đó chỉ ảnh hưởng ring monitor, và ring dữ
+liệu của board 256 MB chạy không NSS (báo firmware buffer 512 byte trong khi host cấp 2048).
+kuncy7 thấy không cần giới hạn theo `ab->nss.enabled`. `main` rebase lên `c36db6321c`, bỏ
+commit ring riêng vì đã có ở upstream.
+
 Router: slot 1 = release `cr8806-nss-2026.10.27`, soak qua đêm tới trưa 2026-10-28; slot 0 =
 bản thử tách ring (cùng code, không LuCI). SSID tạm 2.4 GHz giữ tới lúc đo lại.
 
@@ -495,7 +502,7 @@ bản thử tách ring (cùng code, không LuCI). SSID tạm 2.4 GHz giữ tới
 
 - PR 50: bản mục 12 đã soak 17,8 h (log lưu local). Còn chạy ngắn cùng commit không profile
   để so `Frame OOR`, `Overflow` và `tx_desc_alloc_fail` (chỉ xem có tăng hay không).
-- Issue 53 / mục 14: soak bản ring 1024/512 tới trưa 2026-10-28, đo lại 5 GHz và 2.4 GHz
+- Issue 53 / mục 14 (PR 55 đã merge): soak bản ring 1024/512 tới trưa 2026-10-28, đo lại 5 GHz và 2.4 GHz
   khi đã chạy lâu để so RAM công bằng với bản 512. Rút điện khởi động lại một lần.
 - Mục 8: kiểm lại vì sao hạ pool xuống 2048 làm cạn (pool bằng đúng `n2h_low_water_core0`?).
 - 999-998: thử nhiều client (điện thoại, laptop, IoT) để chắc 16384 link descriptor đủ.
