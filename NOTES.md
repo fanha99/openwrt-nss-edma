@@ -498,12 +498,68 @@ commit ring riêng vì đã có ở upstream.
 Router: slot 1 = release `cr8806-nss-2026.10.27`, soak qua đêm tới trưa 2026-10-28; slot 0 =
 bản thử tách ring (cùng code, không LuCI). SSID tạm 2.4 GHz giữ tới lúc đo lại.
 
+## 15. Release `cr8806-nss-2026.10.27` sau 16 h: soak và đo lại hai băng
+
+Image release ở slot 1 (ring 1024 QCN6122 / 512 IPQ5018, NSS offload cả hai radio: `nss init
+soc` if_num 203 cho IPQ5018, 215 cho QCN6122), boot 2026-10-27 18:04, 1-3 client 5 GHz, không
+client 2.4 GHz qua đêm. `memlong.sh` ghi mỗi 10 phút, tự lưu snapshot nếu REO 5 GHz đứng 10 phút
+khi có client.
+
+Qua đêm (18:06 → 10:07, trước khi đo):
+- MemAvailable 16-33 MiB, lên xuống theo tải, không giảm dần. `SUnreclaim` 23-31 MiB, `Slab`
+  31-41 MiB, về lại mức cũ khi bớt client. Không thấy rò.
+- Không có thư mục `reo-stall-*`; REO 5 GHz chạy liên tục. Không lỗi ath11k/NSS trong dmesg,
+  logread. hostapd không restart AP nào, radio không reset (`PDEV resets` 0 ở 2.4 GHz). 6 lần
+  client rời mạng qua đêm đều khớp với thiết bị tắt/ra ngoài (laptop ngủ, TV tắt, điện thoại),
+  client vào lại bình thường. Một lần `lan1` mất link 26 s lúc ~21:37 (phía thiết bị nối dây).
+- `n2h_payload_alloc_fails` đứng ở 34 (giá trị lúc boot) suốt 16 h.
+
+Đo lại sau 16 h (5 lượt như mục 13). Laptop đặt chỗ khác hôm qua nên tốc độ chỉ để tham khảo:
+
+| | 5 GHz (HE160, −47..−50 dBm) | 2.4 GHz (HE20 kênh 1, −44 dBm) |
+|---|---|---|
+| upload Mbit/s | 345-573 | 50-65 |
+| download Mbit/s | 710-823 | 100-124 |
+| RXDMA `Overflow` qua 5 lượt | +726 (ring 512 ở mục 14: +78.325) | 0 |
+| `rx_desc_in_use` | 1023 suốt | 511-610, về 511 lúc nghỉ |
+| MemAvailable thấp nhất / lúc nghỉ | 12 / 14-20 MiB | 11 / 15-19 MiB |
+| `tx_desc_alloc_fail` | không tăng | không tăng (lần ở mục 14: +24 triệu) |
+
+- `n2h_payload_alloc_fails` 34 → 1480 trong đúng một phút: lượt 5 upload `-P 8` ở 5 GHz,
+  cùng lúc laptop mở video trên mạng (thêm luồng tải xuống). Sau đó đứng yên ở 1480, kể cả qua
+  5 lượt 2.4 GHz. Bộ đếm này do firmware NSS báo (`nss_n2h.h`: số lần cấp pbuf thất bại vì
+  không còn payload trống), không phải lỗi cấp phát của host: `drv_nbuf_alloc_errors` và
+  `drv_paged_buf_alloc_errors` vẫn 0, `payload_free_count` lúc đọc vẫn ~2050. Nghĩa là pool
+  payload trống của firmware chạm đáy trong khoảnh khắc lúc tải hai chiều dồn dập, host cấp bù
+  kịp; gói rơi trong lúc đó TCP tự gửi lại (phút đó vẫn 538 Mbit/s). ~1446 lần trên ~5,7 triệu
+  gói nhận trong phút đó. Đáng theo dõi nếu nó tăng đều khi dùng bình thường.
+- `PDEV resets` (firmware `pdev_stats`) ở 5 GHz: 1 lúc 10:31 (16,5 h), 4 lúc 11:12. 2.4 GHz
+  vẫn 0. Không có dòng nào trong dmesg/logread, không DFS/radar, kênh không đổi, client không
+  rời mạng. Ba lần tăng rơi vào lúc laptop đã sang 2.4 GHz (5 GHz chỉ còn điện thoại và TV).
+  Chưa rõ firmware reset vì gì; cần ghi bộ đếm này theo thời gian để biết có đi kèm sự cố nào.
+- Ngoài điểm trên, không thấy vấn đề ở bản release. Ring 1024 vẫn giữ `Overflow` thấp sau 16 h.
+- Lúc chuyển laptop sang 2.4 GHz, Windows quét không thấy SSID 2.4 nào của router (thấy hàng
+  xóm ở kênh 4, 8, 10). Router vẫn phát (`pdev_stats` phy0 ~20 PPDU/s, khớp beacon 2 SSID), nối
+  tay thì vào ngay: lỗi quét phía laptop, không phải router.
+
+Rút điện khởi động lại (cold boot, 2026-10-28 11:28):
+- Lên lại đúng slot 1, cờ boot không đổi, không có `flag_try_sys*_failed`.
+- NSS khởi tạo cả hai radio như lúc reboot thường (`NSS 256 MiB: active`, `nss init soc` 203 /
+  215). dmesg không có lỗi ath11k/NSS. 2.4 GHz phát ngay (11:28:17), 5 GHz sau CAC DFS 60 s
+  (11:29:18), kênh 36 HE160 như cũ. hostapd báo `Can't set DFS state` cho 5200-5240 MHz như
+  log boot của bản soak mục 12.
+- Lúc 1 phút: MemAvailable 25,4 MiB, `n2h_payload_alloc_fails` 35, `payload_free_count` 2065,
+  `PDEV resets` 0 cả hai radio. Lúc 7 phút, sau khi laptop vào 5 GHz HE160: MemAvailable
+  18 MiB, `Overflow` 0.
+- Laptop lại vào SSID 2.4 GHz trước (5 GHz còn chờ DFS), phải chuyển tay về 5 GHz.
+- `memlong.sh`/`climon.sh` không tự chạy sau boot, phải chạy lại.
+
 ## Việc còn lại
 
 - PR 50: bản mục 12 đã soak 17,8 h (log lưu local). Còn chạy ngắn cùng commit không profile
   để so `Frame OOR`, `Overflow` và `tx_desc_alloc_fail` (chỉ xem có tăng hay không).
-- Issue 53 / mục 14 (PR 55 đã merge): soak bản ring 1024/512 tới trưa 2026-10-28, đo lại 5 GHz và 2.4 GHz
-  khi đã chạy lâu để so RAM công bằng với bản 512. Rút điện khởi động lại một lần.
+- Mục 15: soak tiếp nhiều ngày ở slot 1 với dùng thường ngày, xem `n2h_payload_alloc_fails`,
+  `PDEV resets` 5 GHz và MemAvailable.
 - Mục 8: kiểm lại vì sao hạ pool xuống 2048 làm cạn (pool bằng đúng `n2h_low_water_core0`?).
 - 999-998: thử nhiều client (điện thoại, laptop, IoT) để chắc 16384 link descriptor đủ.
 - BPF JIT: chỉ còn cách tắt `CONFIG_BPF_JIT` cho cả ipq50xx; hỏi upstream trước.
